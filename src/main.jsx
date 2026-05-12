@@ -9,6 +9,8 @@ import Dashboard from './pages/Dashboard'
 import TestCases from './pages/TestCases'
 import Documents from './pages/Documents'
 import './index.css'
+import Register from './pages/Register'
+import TestPlans from './pages/TestPlans'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -16,11 +18,13 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
           <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/testcases" element={<TestCases />} />
             <Route path="/documents" element={<Documents />} />
+            <Route path="/testplans" element={<TestPlans />} />
           </Route>
         </Routes>
       </AuthProvider>

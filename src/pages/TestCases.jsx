@@ -6,9 +6,9 @@ const MODULOS = ['Login', 'Reservas', 'Pagos', 'Ancillaries', 'Check-in', 'Cance
 
 const PrioridadBadge = ({ value }) => {
   const colors = {
-    'Smoke':   'bg-purple-50 text-purple-700 border-purple-200',
+    'Smoke': 'bg-purple-50 text-purple-700 border-purple-200',
     'Crítica': 'bg-red-50 text-red-700 border-red-200',
-    'Normal':  'bg-gray-50 text-gray-600 border-gray-200',
+    'Normal': 'bg-gray-50 text-gray-600 border-gray-200',
   }
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colors[value] || colors['Normal']}`}>
@@ -19,8 +19,8 @@ const PrioridadBadge = ({ value }) => {
 
 const ResultadoBadge = ({ value }) => {
   const colors = {
-    'passed':  'bg-green-50 text-green-700 border-green-200',
-    'failed':  'bg-red-50 text-red-700 border-red-200',
+    'passed': 'bg-green-50 text-green-700 border-green-200',
+    'failed': 'bg-red-50 text-red-700 border-red-200',
     'blocked': 'bg-yellow-50 text-yellow-700 border-yellow-200',
   }
   const labels = { passed: 'Pasó', failed: 'Falló', blocked: 'Bloqueado' }
@@ -59,7 +59,7 @@ const FormModal = ({ initial, onSave, onClose }) => {
           </h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
+              <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -109,7 +109,7 @@ const FormModal = ({ initial, onSave, onClose }) => {
                   {form.steps.length > 1 && (
                     <button onClick={() => removeStep(i)} className="text-gray-300 hover:text-red-400 transition">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 6L6 18M6 6l12 12"/>
+                        <path d="M18 6L6 18M6 6l12 12" />
                       </svg>
                     </button>
                   )}
@@ -148,20 +148,36 @@ const FormModal = ({ initial, onSave, onClose }) => {
 }
 
 const TestCases = () => {
-  const [cases, setCases]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [showForm, setShowForm]     = useState(false)
-  const [editing, setEditing]       = useState(null)
-  const [selected, setSelected]     = useState(null)
+  const [cases, setCases] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [selected, setSelected] = useState(null)
   const [filterPrio, setFilterPrio] = useState('todos')
-  const [filterMod, setFilterMod]   = useState('todos')
-  const [search, setSearch]         = useState('')
-  const [executing, setExecuting]   = useState(null)
+  const [filterMod, setFilterMod] = useState('todos')
+  const [search, setSearch] = useState('')
+  const [executing, setExecuting] = useState(null)
+
+  // const fetchCases = async () => {
+  //   const { data } = await supabase
+  //     .from('test_cases')
+  //     .select('*, test_executions(result, executed_at)')
+  //     .order('created_at', { ascending: false })
+  //   setCases(data || [])
+  //   setLoading(false)
+  // }
 
   const fetchCases = async () => {
     const { data } = await supabase
       .from('test_cases')
-      .select('*, test_executions(result, executed_at)')
+      .select(`
+      *,
+      test_executions(id, result, environment, executed_at),
+      plan_executions(
+        id, result, environment, executed_at,
+        test_plans(name)
+      )
+    `)
       .order('created_at', { ascending: false })
     setCases(data || [])
     setLoading(false)
@@ -215,18 +231,33 @@ const TestCases = () => {
 
   const filtered = cases.filter(c => {
     const matchPrio = filterPrio === 'todos' || c.priority === filterPrio
-    const matchMod  = filterMod  === 'todos' || c.module   === filterMod
+    const matchMod = filterMod === 'todos' || c.module === filterMod
     const matchSearch = c.title.toLowerCase().includes(search.toLowerCase())
     return matchPrio && matchMod && matchSearch
   })
 
-  const lastResult = (tc) => tc.test_executions?.[tc.test_executions.length - 1]?.result
+  // const lastResult = (tc) => tc.test_executions?.[tc.test_executions.length - 1]?.result
+
+  // const stats = {
+  //   total: cases.length,
+  //   passed: cases.filter(c => lastResult(c) === 'passed').length,
+  //   failed: cases.filter(c => lastResult(c) === 'failed').length,
+  //   sin: cases.filter(c => !lastResult(c)).length,
+  // }
+
+  const lastResult = (tc) => {
+    const sueltas = tc.test_executions || []
+    const planes = tc.plan_executions || []
+    const all = [...sueltas, ...planes]
+      .sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at))
+    return all[0]?.result
+  }
 
   const stats = {
-    total:   cases.length,
-    passed:  cases.filter(c => lastResult(c) === 'passed').length,
-    failed:  cases.filter(c => lastResult(c) === 'failed').length,
-    sin:     cases.filter(c => !lastResult(c)).length,
+    total: cases.length,
+    pasaron: cases.filter(c => lastResult(c) === 'passed').length,
+    fallaron: cases.filter(c => lastResult(c) === 'failed').length,
+    sin: cases.filter(c => !lastResult(c)).length,
   }
 
   if (loading) return (
@@ -246,37 +277,38 @@ const TestCases = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total',    value: stats.total,  color: '#3b82f6' },
-          { label: 'Pasaron',  value: stats.passed, color: '#10b981' },
-          { label: 'Fallaron', value: stats.failed, color: '#ef4444' },
-          { label: 'Sin ejecutar', value: stats.sin, color: '#6b7280' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-xs text-gray-500 mb-1">{label}</p>
-            <p className="text-2xl font-semibold" style={{ color }}>{value}</p>
-          </div>
-        ))}
-      </div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  {[
+    { label: 'Total',        value: stats.total,    color: '#3b82f6' },
+    { label: 'Pasaron',      value: stats.pasaron,  color: '#10b981' },
+    { label: 'Fallaron',     value: stats.fallaron, color: '#ef4444' },
+    { label: 'Sin ejecutar', value: stats.sin,      color: '#6b7280' },
+  ].map(({ label, value, color }) => (
+    <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
+      <p className="text-xs text-gray-500 mb-1">{label}</p>
+      <p className="text-2xl font-semibold" style={{ color }}>{value}</p>
+    </div>
+  ))}
+</div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <input type="text" placeholder="Buscar casos..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="todos">Todas las prioridades</option>
-          {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
-        </select>
-        <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="todos">Todos los módulos</option>
-          {MODULOS.map(m => <option key={m}>{m}</option>)}
-        </select>
-        <span className="text-xs text-gray-400">{filtered.length} casos</span>
-      </div>
+{/* Filtros */}
+<div className="flex flex-wrap gap-3 items-center">
+  <input type="text" placeholder="Buscar casos..."
+    value={search} onChange={e => setSearch(e.target.value)}
+    className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+  <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
+    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <option value="todos">Todas las prioridades</option>
+    {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
+  </select>
+  <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
+    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    <option value="todos">Todos los módulos</option>
+    {MODULOS.map(m => <option key={m}>{m}</option>)}
+  </select>
+  <span className="text-xs text-gray-400">{filtered.length} casos</span>
+</div>
+      
 
       {/* Tabla */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -353,7 +385,7 @@ const TestCases = () => {
               </div>
               <button onClick={() => setSelected(null)} className="text-gray-400 hover:text-gray-600">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
+                  <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               </button>
             </div>
