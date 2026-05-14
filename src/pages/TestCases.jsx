@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
+import ExecutionModal from '../components/ExecutionModal'
 
 const PRIORIDADES = ['Smoke', 'Crítica', 'Normal']
 const MODULOS = ['Login', 'Reservas', 'Pagos', 'Ancillaries', 'Check-in', 'Cancelaciones', 'Otros']
@@ -218,11 +219,13 @@ const TestCases = () => {
     if (selected?.id === tc.id) setSelected(null)
   }
 
-  const handleExecute = async (tc, result) => {
+  const handleExecute = async (tc, result, environment, notes) => {
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('test_executions').insert([{
       test_case_id: tc.id,
       result,
+      environment,
+      notes,
       executed_by: user.id
     }])
     setExecuting(null)
@@ -455,35 +458,12 @@ const TestCases = () => {
 
       {/* Modal ejecutar */}
       {executing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
-          onClick={e => e.target === e.currentTarget && setExecuting(null)}>
-          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-sm p-6">
-            <h3 className="text-sm font-medium text-gray-800 mb-1">Registrar ejecución</h3>
-            <p className="text-xs text-gray-400 mb-5 line-clamp-2">{executing.title}</p>
-            <div className="grid grid-cols-3 gap-3">
-              <button onClick={() => handleExecute(executing, 'passed')}
-                className="flex flex-col items-center gap-2 p-4 border-2 border-green-200 rounded-xl hover:bg-green-50 transition">
-                <span className="text-2xl">✅</span>
-                <span className="text-xs text-green-700 font-medium">Pasó</span>
-              </button>
-              <button onClick={() => handleExecute(executing, 'failed')}
-                className="flex flex-col items-center gap-2 p-4 border-2 border-red-200 rounded-xl hover:bg-red-50 transition">
-                <span className="text-2xl">❌</span>
-                <span className="text-xs text-red-700 font-medium">Falló</span>
-              </button>
-              <button onClick={() => handleExecute(executing, 'blocked')}
-                className="flex flex-col items-center gap-2 p-4 border-2 border-yellow-200 rounded-xl hover:bg-yellow-50 transition">
-                <span className="text-2xl">⚠️</span>
-                <span className="text-xs text-yellow-700 font-medium">Bloqueado</span>
-              </button>
-            </div>
-            <button onClick={() => setExecuting(null)}
-              className="w-full mt-4 text-sm text-gray-400 hover:text-gray-600 transition">
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <ExecutionModal
+          tc={executing}
+          contextLabel="Ejecución de TC suelto"
+          onClose={() => setExecuting(null)}
+          onExecute={(result, environment, notes) => handleExecute(executing, result, environment, notes)}
+        />
       )}
 
       {/* Modal form */}

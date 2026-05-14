@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
+import ExecutionModal from '../components/ExecutionModal'
 
 const STATUS_LABELS = { draft: 'Borrador', active: 'Activo', completed: 'Completado' }
 const STATUS_COLORS = {
@@ -166,106 +167,6 @@ const PlanFormModal = ({ initial, allCases, onSave, onClose }) => {
 }
 
 // Formulario de ejecución en dos pasos
-const ExecuteForm = ({ tc, onExecute, onCancel }) => {
-  const [step, setStep]           = useState(1)
-  const [result, setResult]       = useState(null)
-  const [environment, setEnv]     = useState('sandbox')
-  const [notes, setNotes]         = useState('')
-
-  if (step === 1) return (
-    <div className="space-y-3">
-      {tc.steps?.filter(Boolean).length > 0 && (
-        <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
-          <p className="text-xs text-gray-400 mb-1">Pasos</p>
-          <ol className="space-y-1">
-            {tc.steps.filter(Boolean).map((s, i) => (
-              <li key={i} className="text-xs text-gray-600 flex gap-2">
-                <span className="text-gray-400 flex-shrink-0">{i + 1}.</span>
-                <span>{s}</span>
-              </li>
-            ))}
-          </ol>
-          {tc.expected_result && (
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <p className="text-xs text-gray-400">Resultado esperado</p>
-              <p className="text-xs text-gray-600 mt-0.5">{tc.expected_result}</p>
-            </div>
-          )}
-        </div>
-      )}
-      <p className="text-xs text-gray-500 text-center pt-1">¿Cuál fue el resultado?</p>
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { value: 'passed',  emoji: '✅', label: 'Pasó',      cls: 'border-green-200 hover:bg-green-50' },
-          { value: 'failed',  emoji: '❌', label: 'Falló',     cls: 'border-red-200 hover:bg-red-50' },
-          { value: 'blocked', emoji: '⚠️', label: 'Bloqueado', cls: 'border-yellow-200 hover:bg-yellow-50' },
-        ].map(({ value, emoji, label, cls }) => (
-          <button key={value}
-            onClick={() => { setResult(value); setStep(2) }}
-            className={`flex flex-col items-center gap-1.5 p-3 border-2 rounded-xl transition ${cls}`}>
-            <span className="text-xl">{emoji}</span>
-            <span className="text-xs font-medium text-gray-600">{label}</span>
-          </button>
-        ))}
-      </div>
-      <button onClick={onCancel} className="w-full text-xs text-gray-400 hover:text-gray-600 py-1 transition">
-        Cancelar
-      </button>
-    </div>
-  )
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <ResultIcon result={result} />
-        <span className="text-sm text-gray-700 font-medium">
-          {result === 'passed' ? 'Pasó' : result === 'failed' ? 'Falló' : 'Bloqueado'}
-        </span>
-        <button onClick={() => setStep(1)} className="text-xs text-blue-500 hover:text-blue-700 ml-auto">
-          Cambiar
-        </button>
-      </div>
-
-      <div>
-        <p className="text-xs text-gray-500 mb-2">Ambiente</p>
-        <div className="flex gap-2">
-          {['sandbox', 'production'].map(env => (
-            <button key={env} onClick={() => setEnv(env)}
-              className={`flex-1 text-xs py-2 rounded-lg border-2 transition font-medium ${
-                environment === env
-                  ? env === 'production'
-                    ? 'bg-orange-50 text-orange-600 border-orange-300'
-                    : 'bg-blue-50 text-blue-600 border-blue-300'
-                  : 'text-gray-400 border-gray-200 hover:bg-gray-50'
-              }`}>
-              {env === 'sandbox' ? '🧪 Sandbox' : '🚀 Producción'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <p className="text-xs text-gray-500 mb-1">Notas opcionales</p>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="Ej: Falló en el paso 3, error 500..."
-          rows={2}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-      </div>
-
-      <div className="flex gap-2">
-        <button onClick={() => onExecute(result, environment, notes)}
-          className="flex-1 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition font-medium">
-          Confirmar
-        </button>
-        <button onClick={() => setStep(1)}
-          className="px-4 py-2 border border-gray-200 text-gray-500 text-sm rounded-lg hover:bg-gray-50 transition">
-          Atrás
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // Modal detalle del plan con historial por TC
 const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
   const [cases, setCases]       = useState([])
@@ -435,19 +336,12 @@ const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
 
       {/* Modal ejecutar */}
       {executing && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
-          onClick={e => e.target === e.currentTarget && setExecuting(null)}>
-          <div className="bg-white rounded-xl border border-gray-200 w-full max-w-sm p-6">
-            <h3 className="text-sm font-medium text-gray-800 mb-1">Registrar ejecución</h3>
-            <p className="text-xs text-gray-400 mb-4 line-clamp-2">{executing.title}</p>
-            <ExecuteForm
-              tc={executing}
-              onExecute={(result, env, notes) => handleExecute(executing, result, env, notes)}
-              onCancel={() => setExecuting(null)}
-            />
-          </div>
-        </div>
+        <ExecutionModal
+          tc={executing}
+          contextLabel={`Ejecución de ${executing.title}`}
+          onClose={() => setExecuting(null)}
+          onExecute={(result, environment, notes) => handleExecute(executing, result, environment, notes)}
+        />
       )}
     </div>
   )
