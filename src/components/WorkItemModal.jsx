@@ -265,6 +265,30 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
         }
     }
 
+    const handleCreateBugFromExecution = async (tc, failedSteps, notes) => {
+        setError('')
+        try {
+            const stepsText = (tc.steps || []).filter(Boolean)
+                .map((s, i) => {
+                    const failed = failedSteps.find(fs => fs.index === i)
+                    return `${i + 1}. ${s}${failed ? ' ❌ FALLÓ' : ''}`
+                }).join('\n')
+
+            const payload = {
+                title: `[QA] ${tc.title} — Paso ${failedSteps.map(fs => fs.index + 1).join(', ')} falló`,
+                description: `**Test Case:** ${tc.title}\n\n**Módulo:** ${tc.module || '—'}\n\n**Pasos:**\n${stepsText}\n\n**Resultado esperado:** ${tc.expected_result || 'N/A'}\n\n**Notas:** ${notes || '—'}`,
+                severity: '2 - High',
+                type: 'Bug'
+            }
+
+            await axios.post(`${BACKEND}/api/azure/create`, payload)
+            setSuccessMsg('Bug creado en Azure DevOps')
+            setTimeout(() => setSuccessMsg(''), 3000)
+        } catch (err) {
+            setError('Error al crear bug en ADO: ' + (err.response?.data?.error || err.message))
+        }
+    }
+
     const getTCResult = (tc) => {
         if (!tc?.test_executions?.length) return null
         const sorted = tc.test_executions.sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at))
@@ -720,6 +744,7 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
                             handleExecuteBugTC(executingTarget?.tc, args[0], args[1], args[2])
                         }
                     }}
+                    onCreateBug={handleCreateBugFromExecution}
                 />
             )}
         </div >

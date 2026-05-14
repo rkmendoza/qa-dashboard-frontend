@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import ExecutionModal from '../components/ExecutionModal'
+import * as XLSX from 'xlsx'
 
 const PRIORIDADES = ['Smoke', 'Crítica', 'Normal']
 const MODULOS = ['Login', 'Reservas', 'Pagos', 'Ancillaries', 'Check-in', 'Cancelaciones', 'Otros']
@@ -29,6 +30,158 @@ const ResultadoBadge = ({ value }) => {
     <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colors[value] || ''}`}>
       {labels[value] || value}
     </span>
+  )
+}
+
+const COLUMN_MAP = {
+  title: ['title', 'titulo', 'título', 'name', 'nombre', 'test case', 'caso'],
+  description: ['description', 'descripcion', 'descripción', 'desc'],
+  steps: ['steps', 'pasos', 'step', 'paso'],
+  expected_result: ['expected_result', 'expected result', 'resultado esperado', 'expected'],
+  priority: ['priority', 'prioridad', 'prio', 'severity', 'severidad'],
+  module: ['module', 'modulo', 'módulo', 'area', 'area'],
+}
+
+const detectColumn = (header) => {
+  const h = String(header).toLowerCase().trim()
+  for (const [key, aliases] of Object.entries(COLUMN_MAP)) {
+    if (aliases.some(a => h === a || h.includes(a))) return key
+  }
+  return null
+}
+
+const parsePriority = (val) => {
+  const v = String(val || '').toLowerCase().trim()
+  if (['smoke', 'critical', 'critica', 'crítica', 'p0'].some(x => v.includes(x))) return 'Smoke'
+  if (['normal', 'medium', 'p2', 'p3'].some(x => v.includes(x))) return 'Normal'
+  return 'Crítica'
+}
+
+const ImportModal = ({ onClose, onImport }) => {
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState([])
+  const [columns, setColumns] = useState({})
+  const [error, setError] = useState('')
+
+  const handleFile = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setError('')
+    setFile(f)
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const data = new Uint8Array(ev.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+        if (json.length === 0) {
+          setError('El archivo está vacío')
+          return
+        }
+
+        const headers = Object.keys(json[0])
+        const detected = {}
+        headers.forEach(h => {
+          const key = detectColumn(h)
+          if (key) detected[key] = h
+        })
+
+        setColumns(detected)
+        setPreview(json.slice(0, 20))
+      } catch {
+        setError('No se pudo leer el archivo. Asegúrate de que sea un Excel o CSV válido.')
+      }
+    }
+    reader.readAsArrayBuffer(f)
+  }
+
+  const handleConfirm = async () => {
+    if (!file || preview.length === 0) return
+    onImport(file, columns)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-xl border border-gray-200 w-full max-w-3xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-800">Importar test cases</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+          <div className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center hover:border-blue-300 transition cursor-pointer"
+            onClick={() => document.getElementById('import-file-input').click()}>
+            <input id="import-file-input" type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
+            <p className="text-sm text-gray-500 mb-1">
+              {file ? file.name : 'Haz clic para seleccionar un archivo Excel o CSV'}
+            </p>
+            <p className="text-xs text-gray-400">Columnas detectadas: título, descripción, pasos, resultado esperado, prioridad, módulo</p>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-lg">{error}</div>
+          )}
+
+          {preview.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{preview.length} filas</span>
+                {Object.keys(columns).length > 0 && (
+                  <span className="text-green-600">Columnas mapeadas: {Object.keys(columns).join(', ')}</span>
+                )}
+                {Object.keys(columns).length < 3 && (
+                  <span className="text-orange-600">Faltan columnas obligatorias (al menos título)</span>
+                )}
+              </div>
+              <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-64">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-100">
+                      {Object.keys(preview[0]).map(h => (
+                        <th key={h} className="text-left px-3 py-2 font-medium text-gray-500 whitespace-nowrap">
+                          {h}
+                          {columns.title === h && <span className="ml-1 text-green-500">✓</span>}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((row, i) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        {Object.keys(row).map(h => (
+                          <td key={h} className="px-3 py-2 text-gray-700 truncate max-w-40">{String(row[h])}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 p-5 border-t border-gray-100">
+          <button onClick={onClose}
+            className="text-sm px-4 py-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition">
+            Cancelar
+          </button>
+          <button onClick={handleConfirm}
+            disabled={preview.length === 0 || !columns.title}
+            className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+            Importar {preview.length} casos
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -158,15 +311,9 @@ const TestCases = () => {
   const [filterMod, setFilterMod] = useState('todos')
   const [search, setSearch] = useState('')
   const [executing, setExecuting] = useState(null)
-
-  // const fetchCases = async () => {
-  //   const { data } = await supabase
-  //     .from('test_cases')
-  //     .select('*, test_executions(result, executed_at)')
-  //     .order('created_at', { ascending: false })
-  //   setCases(data || [])
-  //   setLoading(false)
-  // }
+  const [showImport, setShowImport] = useState(false)
+  const [sortField, setSortField] = useState('created_at')
+  const [sortDir, setSortDir] = useState('desc')
 
   const fetchCases = async () => {
     const { data } = await supabase
@@ -232,21 +379,68 @@ const TestCases = () => {
     fetchCases()
   }
 
-  const filtered = cases.filter(c => {
-    const matchPrio = filterPrio === 'todos' || c.priority === filterPrio
-    const matchMod = filterMod === 'todos' || c.module === filterMod
-    const matchSearch = c.title.toLowerCase().includes(search.toLowerCase())
-    return matchPrio && matchMod && matchSearch
-  })
+  const handleImport = async (file, columns) => {
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      try {
+        const data = new Uint8Array(ev.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheet = workbook.Sheets[workbook.SheetNames[0]]
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: '' })
 
-  // const lastResult = (tc) => tc.test_executions?.[tc.test_executions.length - 1]?.result
+        const { data: { user } } = await supabase.auth.getUser()
 
-  // const stats = {
-  //   total: cases.length,
-  //   passed: cases.filter(c => lastResult(c) === 'passed').length,
-  //   failed: cases.filter(c => lastResult(c) === 'failed').length,
-  //   sin: cases.filter(c => !lastResult(c)).length,
-  // }
+        const rows = json.map(row => {
+          const stepsRaw = String(row[columns.steps] || '').trim()
+          const steps = stepsRaw ? stepsRaw.split('\n').filter(Boolean) : ['']
+
+          return {
+            title: String(row[columns.title] || '').trim(),
+            description: String(row[columns.description] || '').trim(),
+            steps,
+            expected_result: String(row[columns.expected_result] || '').trim(),
+            priority: columns.priority ? parsePriority(row[columns.priority]) : 'Normal',
+            module: columns.module ? String(row[columns.module] || '').trim() : 'Otros',
+            created_by: user.id
+          }
+        }).filter(r => r.title)
+
+        if (rows.length === 0) return
+
+        const { data: existing } = await supabase
+          .from('test_cases')
+          .select('title')
+        const existingTitles = new Set((existing || []).map(r => r.title.toUpperCase()))
+
+        const newRows = rows.filter(r => !existingTitles.has(r.title.toUpperCase()))
+        const skipped = rows.length - newRows.length
+
+        if (newRows.length === 0) {
+          alert('Todos los casos ya existen en la base de datos.')
+          return
+        }
+
+        const { error } = await supabase.from('test_cases').insert(newRows)
+        if (error) throw error
+
+        setShowImport(false)
+        fetchCases()
+        alert(`Importados ${newRows.length} caso(s). ${skipped > 0 ? skipped + ' omitido(s) por duplicado.' : ''}`)
+      } catch (err) {
+        alert('Error al importar: ' + err.message)
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
 
   const lastResult = (tc) => {
     const sueltas = tc.test_executions || []
@@ -263,6 +457,35 @@ const TestCases = () => {
     sin: cases.filter(c => !lastResult(c)).length,
   }
 
+  const priorityOrder = { Smoke: 0, Crítica: 1, Normal: 2 }
+
+  const filtered = cases.filter(c => {
+    const matchPrio = filterPrio === 'todos' || c.priority === filterPrio
+    const matchMod = filterMod === 'todos' || c.module === filterMod
+    const matchSearch = c.title.toLowerCase().includes(search.toLowerCase())
+    return matchPrio && matchMod && matchSearch
+  }).sort((a, b) => {
+    let av, bv
+    if (sortField === 'title') { av = a.title.toLowerCase(); bv = b.title.toLowerCase() }
+    else if (sortField === 'module') { av = a.module || ''; bv = b.module || '' }
+    else if (sortField === 'priority') { av = priorityOrder[a.priority] ?? 99; bv = priorityOrder[b.priority] ?? 99 }
+    else if (sortField === 'result') { av = lastResult(a) || 'zzz'; bv = lastResult(b) || 'zzz' }
+    else { av = a.created_at || ''; bv = b.created_at || '' }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return null
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        className={`transition-transform ${sortDir === 'desc' ? 'rotate-180' : ''}`}>
+        <path d="M12 5v14M5 12l7 7 7-7" />
+      </svg>
+    )
+  }
+
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Cargando...</div>
   )
@@ -273,45 +496,53 @@ const TestCases = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-gray-800">Test Cases</h2>
-        <button onClick={() => { setEditing(null); setShowForm(true) }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-          + Nuevo caso
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowImport(true)}
+            className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition flex items-center gap-1.5">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Importar
+          </button>
+          <button onClick={() => { setEditing(null); setShowForm(true) }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+            + Nuevo caso
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-  {[
-    { label: 'Total',        value: stats.total,    color: '#3b82f6' },
-    { label: 'Pasaron',      value: stats.pasaron,  color: '#10b981' },
-    { label: 'Fallaron',     value: stats.fallaron, color: '#ef4444' },
-    { label: 'Sin ejecutar', value: stats.sin,      color: '#6b7280' },
-  ].map(({ label, value, color }) => (
-    <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-2xl font-semibold" style={{ color }}>{value}</p>
-    </div>
-  ))}
-</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total',        value: stats.total,    color: '#3b82f6' },
+          { label: 'Pasaron',      value: stats.pasaron,  color: '#10b981' },
+          { label: 'Fallaron',     value: stats.fallaron, color: '#ef4444' },
+          { label: 'Sin ejecutar', value: stats.sin,      color: '#6b7280' },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
+            <p className="text-xs text-gray-500 mb-1">{label}</p>
+            <p className="text-2xl font-semibold" style={{ color }}>{value}</p>
+          </div>
+        ))}
+      </div>
 
-{/* Filtros */}
-<div className="flex flex-wrap gap-3 items-center">
-  <input type="text" placeholder="Buscar casos..."
-    value={search} onChange={e => setSearch(e.target.value)}
-    className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-  <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
-    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-    <option value="todos">Todas las prioridades</option>
-    {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
-  </select>
-  <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
-    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-    <option value="todos">Todos los módulos</option>
-    {MODULOS.map(m => <option key={m}>{m}</option>)}
-  </select>
-  <span className="text-xs text-gray-400">{filtered.length} casos</span>
-</div>
-      
+      {/* Filtros */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <input type="text" placeholder="Buscar casos..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="todos">Todas las prioridades</option>
+          {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
+        </select>
+        <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="todos">Todos los módulos</option>
+          {MODULOS.map(m => <option key={m}>{m}</option>)}
+        </select>
+        <span className="text-xs text-gray-400">{filtered.length} casos</span>
+      </div>
 
       {/* Tabla */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -327,10 +558,21 @@ const TestCases = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Título</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Módulo</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Prioridad</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Último resultado</th>
+                {[
+                  { key: 'title', label: 'Título' },
+                  { key: 'module', label: 'Módulo' },
+                  { key: 'priority', label: 'Prioridad' },
+                  { key: 'result', label: 'Último resultado' },
+                ].map(({ key, label }) => (
+                  <th key={key}
+                    onClick={() => handleSort(key)}
+                    className="text-left px-4 py-3 text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                    <span className="flex items-center gap-1">
+                      {label}
+                      <SortIcon field={key} />
+                    </span>
+                  </th>
+                ))}
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -472,6 +714,14 @@ const TestCases = () => {
           initial={editing}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditing(null) }}
+        />
+      )}
+
+      {/* Modal importar */}
+      {showImport && (
+        <ImportModal
+          onClose={() => setShowImport(false)}
+          onImport={handleImport}
         />
       )}
     </div>
