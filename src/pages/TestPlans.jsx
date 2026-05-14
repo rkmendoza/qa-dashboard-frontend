@@ -8,7 +8,6 @@ const STATUS_COLORS = {
   active:    'bg-blue-50 text-blue-700 border-blue-200',
   completed: 'bg-green-50 text-green-700 border-green-200',
 }
-const MODULOS = ['Login', 'Reservas', 'Pagos', 'Ancillaries', 'Check-in', 'Cancelaciones', 'Otros']
 
 const StatusBadge = ({ value }) => (
   <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLORS[value] || STATUS_COLORS.draft}`}>
@@ -41,7 +40,7 @@ const ProgressBar = ({ passed, total }) => {
 }
 
 // Formulario crear/editar plan
-const PlanFormModal = ({ initial, allCases, onSave, onClose }) => {
+const PlanFormModal = ({ initial, allCases, onSave, onClose, modules }) => {
   const [name, setName]         = useState(initial?.name || '')
   const [description, setDesc]  = useState(initial?.description || '')
   const [module, setModule]     = useState(initial?.module || 'Otros')
@@ -88,7 +87,7 @@ const PlanFormModal = ({ initial, allCases, onSave, onClose }) => {
               <label className="text-xs text-gray-500 mb-1 block">Módulo</label>
               <select value={module} onChange={e => setModule(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {MODULOS.map(m => <option key={m}>{m}</option>)}
+                {modules.map(m => <option key={m.id || m}>{m.name || m}</option>)}
               </select>
             </div>
             <div>
@@ -357,9 +356,10 @@ const TestPlans = () => {
   const [editing, setEditing]       = useState(null)
   const [viewing, setViewing]       = useState(null)
   const [filterStatus, setFilter]   = useState('todos')
+  const [modules, setModules]       = useState([])
 
   const fetchAll = async () => {
-    const [{ data: plansData }, { data: casesData }, { data: execData }] = await Promise.all([
+    const [{ data: plansData }, { data: casesData }, { data: execData }, { data: modData }] = await Promise.all([
       supabase.from('test_plans')
         .select('*, test_plan_cases(test_case_id)')
         .order('created_at', { ascending: false }),
@@ -368,7 +368,8 @@ const TestPlans = () => {
         .order('title'),
       supabase.from('plan_executions')
         .select('test_plan_id, test_case_id, result, executed_at')
-        .order('executed_at', { ascending: false })
+        .order('executed_at', { ascending: false }),
+      supabase.from('modules').select('*').order('name')
     ])
 
     // Calcular progreso real por plan
@@ -392,6 +393,7 @@ const TestPlans = () => {
     setPlans(plansData || [])
     setAllCases(casesData || [])
     setPlanStats(stats)
+    setModules(modData || [])
     setLoading(false)
   }
 
@@ -554,6 +556,7 @@ const TestPlans = () => {
           allCases={allCases}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditing(null) }}
+          modules={modules}
         />
       )}
 

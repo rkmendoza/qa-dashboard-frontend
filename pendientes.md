@@ -21,9 +21,9 @@
 
 | # | Estado | Descripción |
 |---|--------|-------------|
-| 11 | ❌ Pendiente | CRUD de módulos desde UI (hoy lista fija en código) |
-| 12 | ❌ Pendiente | Carpetas/sub-páginas en Documents |
-| 9 | ❌ Pendiente | Importar test cases desde Excel |
+| 11 | ✅ Hecho | CRUD de módulos desde UI — modal con crear/renombrar/eliminar, fetch desde DB |
+| 12 | ✅ Hecho | Carpetas/sub-páginas en Documents — jerarquía con parent_id + tree sidebar |
+| 9 | ✅ Hecho | Importar test cases desde Excel con preview y detección de columnas |
 
 ## 🔵 Fase 4 — Integraciones
 
@@ -39,9 +39,14 @@
 
 | Fecha | Descripción |
 |------|-------------|
-| Mayo 2026 | Fix: parámetros del callback `onExecute` en WorkItemModal — ahora mapea correctamente args según `executingTarget.type` |
-| Mayo 2026 | Fix: `fetchPlanDetail` ahora incluye `plan_executions` para que el resultado se actualice al refrescar |
-| Mayo 2026 | Fix: botón verde "Ejecutar" en plan asociado ahora abre `openPlanDetail` en vez de `ExecutionModal` directo |
-| Mayo 2026 | Fix: `selectedPlan` y `executingTarget` movidos fuera del contenedor scrollable para evitar superposición z-index |
-| Mayo 2026 | Feature: Ejecución paso a paso con checkboxes y resultado automático |
-| Mayo 2026 | Fix: imágenes ADO rotas — proxy backend con PAT + Vite proxy para servir attachments |
+| Mayo 2026 | Fix: parámetros del callback `onExecute` en WorkItemModal |
+| Mayo 2026 | Fix: fetchPlanDetail incluye plan_executions |
+| Mayo 2026 | Fix: botón "Ejecutar" en plan abre openPlanDetail |
+| Mayo 2026 | Fix: modales fuera de contenedor scrollable |
+| Mayo 2026 | Feature: Ejecución paso a paso con checkboxes |
+| Mayo 2026 | Fix: imágenes ADO rotas — proxy backend |
+| Mayo 2026 | Feature: Import test cases Excel/CSV con preview + column autodetect |
+| Mayo 2026 | Feature: Column sorting en TestCases (headers clickeables) |
+| Mayo 2026 | Feature: Validación duplicados en import TC por título (case-insensitive) |
+| Mayo 2026 | Feature: Documents tipo Notion — jerarquía, favoritos, plantillas, import md/docx, drag to nest, emoji picker, breadcrumbs |
+| Mayo 2026 | Feature: CRUD de módulos desde UI — tabla modules en Supabase, modal de gestión, reemplazo de lista hardcodeada en TestCases y TestPlans |

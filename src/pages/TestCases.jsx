@@ -4,7 +4,6 @@ import ExecutionModal from '../components/ExecutionModal'
 import * as XLSX from 'xlsx'
 
 const PRIORIDADES = ['Smoke', 'Crítica', 'Normal']
-const MODULOS = ['Login', 'Reservas', 'Pagos', 'Ancillaries', 'Check-in', 'Cancelaciones', 'Otros']
 
 const PrioridadBadge = ({ value }) => {
   const colors = {
@@ -185,7 +184,7 @@ const ImportModal = ({ onClose, onImport }) => {
   )
 }
 
-const FormModal = ({ initial, onSave, onClose }) => {
+const FormModal = ({ initial, onSave, onClose, modules }) => {
   const [form, setForm] = useState(initial || {
     title: '', description: '', steps: [''], expected_result: '', priority: 'Normal', module: 'Otros'
   })
@@ -238,7 +237,7 @@ const FormModal = ({ initial, onSave, onClose }) => {
               <label className="text-xs text-gray-500 mb-1 block">Módulo</label>
               <select value={form.module} onChange={e => setField('module', e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                {MODULOS.map(m => <option key={m}>{m}</option>)}
+                {modules.map(m => <option key={m.id || m}>{m.name || m}</option>)}
               </select>
             </div>
           </div>
@@ -314,6 +313,13 @@ const TestCases = () => {
   const [showImport, setShowImport] = useState(false)
   const [sortField, setSortField] = useState('created_at')
   const [sortDir, setSortDir] = useState('desc')
+  const [modules, setModules] = useState([])
+  const [showModuleMgr, setShowModuleMgr] = useState(false)
+
+  const fetchModules = async () => {
+    const { data } = await supabase.from('modules').select('*').order('name')
+    setModules(data || [])
+  }
 
   const fetchCases = async () => {
     const { data } = await supabase
@@ -331,7 +337,7 @@ const TestCases = () => {
     setLoading(false)
   }
 
-  useEffect(() => { fetchCases() }, [])
+  useEffect(() => { fetchCases(); fetchModules() }, [])
 
   const handleSave = async (form) => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -539,8 +545,12 @@ const TestCases = () => {
         <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="todos">Todos los módulos</option>
-          {MODULOS.map(m => <option key={m}>{m}</option>)}
+          {modules.map(m => <option key={m.id || m}>{m.name || m}</option>)}
         </select>
+        <button onClick={() => setShowModuleMgr(true)}
+          className="text-xs text-gray-400 hover:text-blue-600 transition px-2 py-1.5 rounded-lg border border-gray-200 hover:border-blue-200">
+          Gestionar
+        </button>
         <span className="text-xs text-gray-400">{filtered.length} casos</span>
       </div>
 
@@ -714,6 +724,7 @@ const TestCases = () => {
           initial={editing}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditing(null) }}
+          modules={modules}
         />
       )}
 
@@ -724,6 +735,125 @@ const TestCases = () => {
           onImport={handleImport}
         />
       )}
+
+      {/* Modal gestionar módulos */}
+      {showModuleMgr && (
+        <ModuleManager
+          modules={modules}
+          onRefresh={fetchModules}
+          onClose={() => setShowModuleMgr(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+const ModuleManager = ({ modules, onRefresh, onClose }) => {
+  const [newName, setNewName] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [error, setError] = useState('')
+
+  const handleCreate = async () => {
+    const name = newName.trim()
+    if (!name) return
+    setError('')
+    const { error: err } = await supabase.from('modules').insert({ name }).select().single()
+    if (err) { setError(err.message); return }
+    setNewName('')
+    onRefresh()
+  }
+
+  const handleRename = async (id) => {
+    const name = editName.trim()
+    if (!name) return
+    setError('')
+    const { error: err } = await supabase.from('modules').update({ name }).eq('id', id)
+    if (err) { setError(err.message); return }
+    setEditingId(null)
+    onRefresh()
+  }
+
+  const handleDelete = async (id, name) => {
+    if (name === 'Otros') { setError('No se puede eliminar el módulo "Otros"'); return }
+    if (!confirm(`¿Eliminar el módulo "${name}"?`)) return
+    setError('')
+    const { error: err } = await supabase.from('modules').delete().eq('id', id)
+    if (err) { setError(err.message); return }
+    onRefresh()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.4)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-xl border border-gray-200 w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-800">Gestionar módulos</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5">
+          {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+          <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+            {modules.map(m => (
+              <div key={m.id}
+                className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg group">
+                {editingId === m.id ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input value={editName} onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleRename(m.id)}
+                      className="flex-1 border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus />
+                    <button onClick={() => handleRename(m.id)}
+                      className="text-xs text-blue-600 hover:text-blue-800">OK</button>
+                    <button onClick={() => setEditingId(null)}
+                      className="text-xs text-gray-400 hover:text-gray-600">X</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm text-gray-700">{m.name}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button onClick={() => { setEditingId(m.id); setEditName(m.name) }}
+                        className="text-xs text-gray-400 hover:text-blue-600 px-1.5 py-1 rounded hover:bg-white transition"
+                        title="Renombrar">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDelete(m.id, m.name)}
+                        className="text-xs text-gray-400 hover:text-red-500 px-1.5 py-1 rounded hover:bg-white transition"
+                        title="Eliminar">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 6L6 18M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              placeholder="Nuevo módulo..."
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={handleCreate}
+              disabled={!newName.trim()}
+              className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+              Agregar
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
