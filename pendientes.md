@@ -13,9 +13,9 @@
 
 | # | Estado | Descripción |
 |---|--------|-------------|
-| 4 | ❌ Pendiente | Historial de ejecuciones con ambiente + fuente (plan vs suelta) |
-| 8 | ❌ Pendiente | Renderizar menciones `@Nombre` en comentarios ADO |
-| 10 | ❌ Pendiente | Agregar selector de ambiente en ejecución suelta |
+| 4 | ✅ Hecho | Historial de ejecuciones con ambiente + fuente (plan vs suelta) — badge de ambiente, label de fuente, notas |
+| 8 | ✅ Hecho | Renderizar menciones `@Nombre` en comentarios ADO — CSS para <code>a[data-vss-mention]</code> + fallback para texto plano con <code>.mention</code> |
+| 10 | ✅ Hecho | Selector de ambiente en ejecución suelta (sandbox/producción) — ya implementado en ExecutionModal desde sesión anterior |
 
 ## 🟢 Fase 3 — Features nuevas
 
@@ -50,3 +50,7 @@
 | Mayo 2026 | Feature: Validación duplicados en import TC por título (case-insensitive) |
 | Mayo 2026 | Feature: Documents tipo Notion — jerarquía, favoritos, plantillas, import md/docx, drag to nest, emoji picker, breadcrumbs |
 | Mayo 2026 | Feature: CRUD de módulos desde UI — tabla modules en Supabase, modal de gestión, reemplazo de lista hardcodeada en TestCases y TestPlans |
+| Mayo 2026 | Fix: Dashboard ahora persiste cambios de estado en bugs_cache (backend) + filtra QA Validated en front con stat card propia |
+| Mayo 2026 | Feature: Dashboard — gráfico por sprint, donut por estado, stats de TC ejecutados, card de TC Fallados reemplaza Bloqueados |
+| Mayo 2026 | Feature: Historial de ejecuciones #4 — unifica suelta + plan, muestra ambiente (Sandbox/Prod), fuente y notas en TestCases y WorkItemModal |
+| Mayo 2026 | Feature: Menciones @Nombre #8 — CSS data-vss-mention + fallback .mention para texto plano en comentarios, descripción y repro steps |

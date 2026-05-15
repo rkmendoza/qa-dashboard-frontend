@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import ExecutionModal from '../components/ExecutionModal'
+import EditExecutionModal from '../components/EditExecutionModal'
 import * as XLSX from 'xlsx'
 
 const PRIORIDADES = ['Smoke', 'Crítica', 'Normal']
@@ -28,6 +29,15 @@ const ResultadoBadge = ({ value }) => {
   return (
     <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colors[value] || ''}`}>
       {labels[value] || value}
+    </span>
+  )
+}
+
+const EnvironmentBadge = ({ value }) => {
+  if (!value) return null
+  return (
+    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${value === 'production' ? 'bg-orange-50 text-orange-600 border border-orange-200' : 'bg-blue-50 text-blue-600 border border-blue-200'}`}>
+      {value === 'production' ? '🚀 Prod' : '🧪 Sandbox'}
     </span>
   )
 }
@@ -311,10 +321,13 @@ const TestCases = () => {
   const [search, setSearch] = useState('')
   const [executing, setExecuting] = useState(null)
   const [showImport, setShowImport] = useState(false)
+  const [editExec, setEditExec] = useState(null)
   const [sortField, setSortField] = useState('created_at')
   const [sortDir, setSortDir] = useState('desc')
   const [modules, setModules] = useState([])
   const [showModuleMgr, setShowModuleMgr] = useState(false)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 20
 
   const fetchModules = async () => {
     const { data } = await supabase.from('modules').select('*').order('name')
@@ -326,9 +339,9 @@ const TestCases = () => {
       .from('test_cases')
       .select(`
       *,
-      test_executions(id, result, environment, executed_at),
+      test_executions(id, result, environment, executed_at, notes, evidence),
       plan_executions(
-        id, result, environment, executed_at,
+        id, result, environment, executed_at, notes, evidence,
         test_plans(name)
       )
     `)
@@ -372,15 +385,20 @@ const TestCases = () => {
     if (selected?.id === tc.id) setSelected(null)
   }
 
-  const handleExecute = async (tc, result, environment, notes) => {
+  const handleExecute = async (tc, result, environment, notes, evidence) => {
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('test_executions').insert([{
+    const { error } = await supabase.from('test_executions').insert([{
       test_case_id: tc.id,
       result,
       environment,
       notes,
+      evidence: evidence || [],
       executed_by: user.id
     }])
+    if (error) {
+      alert('Error al guardar ejecución: ' + error.message)
+      return
+    }
     setExecuting(null)
     fetchCases()
   }
@@ -482,6 +500,9 @@ const TestCases = () => {
     return 0
   })
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
   const SortIcon = ({ field }) => {
     if (sortField !== field) return null
     return (
@@ -535,14 +556,14 @@ const TestCases = () => {
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <input type="text" placeholder="Buscar casos..."
-          value={search} onChange={e => setSearch(e.target.value)}
+          value={search} onChange={e => { setSearch(e.target.value); setPage(0) }}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        <select value={filterPrio} onChange={e => setFilterPrio(e.target.value)}
+        <select value={filterPrio} onChange={e => { setFilterPrio(e.target.value); setPage(0) }}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="todos">Todas las prioridades</option>
           {PRIORIDADES.map(p => <option key={p}>{p}</option>)}
         </select>
-        <select value={filterMod} onChange={e => setFilterMod(e.target.value)}
+        <select value={filterMod} onChange={e => { setFilterMod(e.target.value); setPage(0) }}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="todos">Todos los módulos</option>
           {modules.map(m => <option key={m.id || m}>{m.name || m}</option>)}
@@ -565,7 +586,7 @@ const TestCases = () => {
             </button>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <><table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
                 {[
@@ -587,7 +608,7 @@ const TestCases = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((tc, i) => (
+              {paged.map((tc, i) => (
                 <tr key={tc.id}
                   className={`border-b border-gray-50 hover:bg-gray-50 transition cursor-pointer ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}
                   onClick={() => setSelected(tc)}>
@@ -621,7 +642,32 @@ const TestCases = () => {
               ))}
             </tbody>
           </table>
-        )}
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400">{filtered.length} casos</p>
+              {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  ← Anterior
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button key={i} onClick={() => setPage(i)}
+                      className={`text-xs w-7 h-7 rounded-lg transition ${i === page ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}>
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </div>
+        </>)}
       </div>
 
       {/* Modal detalle */}
@@ -674,24 +720,55 @@ const TestCases = () => {
                 </div>
               )}
 
-              {selected.test_executions?.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">Historial de ejecuciones</p>
-                  <div className="space-y-1">
-                    {[...selected.test_executions].reverse().slice(0, 5).map((ex, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs py-1 border-b border-gray-50">
-                        <ResultadoBadge value={ex.result} />
-                        <span className="text-gray-400">
-                          {new Date(ex.executed_at).toLocaleString('es-ES', {
-                            day: '2-digit', month: '2-digit',
-                            hour: '2-digit', minute: '2-digit'
-                          })}
-                        </span>
-                      </div>
-                    ))}
+              {(() => {
+                const history = [
+                  ...(selected.test_executions || []).map(e => ({ ...e, _source: 'suelta', _planName: null })),
+                  ...(selected.plan_executions || []).map(e => ({ ...e, _source: 'plan', _planName: e.test_plans?.name || 'Plan' }))
+                ].sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at))
+                if (history.length === 0) return null
+                return (
+                  <div>
+                    <p className="text-xs text-gray-400 mb-2">Historial de ejecuciones</p>
+                    <div className="space-y-1">
+                      {history.slice(0, 10).map((ex, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs py-1.5 border-b border-gray-50 flex-wrap">
+                          <ResultadoBadge value={ex.result} />
+                          <EnvironmentBadge value={ex.environment} />
+                          <span className={`text-xs font-medium ${ex._source === 'plan' ? 'text-purple-500' : 'text-gray-400'}`}>
+                            {ex._source === 'plan' ? `📋 ${ex._planName}` : '🧪 Suelta'}
+                          </span>
+                          <span className="text-gray-400 ml-auto">
+                            {new Date(ex.executed_at).toLocaleString('es-ES', {
+                              day: '2-digit', month: '2-digit',
+                              hour: '2-digit', minute: '2-digit'
+                            })}
+                          </span>
+                          {ex._source === 'suelta' && (
+                            <button onClick={() => setEditExec({ ...ex, table: 'test_executions' })}
+                              className="text-gray-500 hover:text-blue-600 transition ml-1">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                          )}
+                          {ex.notes && <p className="text-gray-400 w-full mt-0.5 italic">{ex.notes}</p>}
+                          {ex.evidence?.length > 0 && (
+                            <div className="flex gap-1 w-full mt-1">
+                              {ex.evidence.map((path, j) => (
+                                <a key={j} href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/execution-evidence/${path}`} target="_blank" rel="noreferrer">
+                                  <img src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/execution-evidence/${path}`}
+                                    className="w-10 h-10 rounded border border-gray-200 object-cover hover:opacity-80 transition" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
             </div>
 
             <div className="flex justify-end gap-2 p-5 border-t border-gray-100">
@@ -714,7 +791,7 @@ const TestCases = () => {
           tc={executing}
           contextLabel="Ejecución de TC suelto"
           onClose={() => setExecuting(null)}
-          onExecute={(result, environment, notes) => handleExecute(executing, result, environment, notes)}
+          onExecute={(result, environment, notes, evidence) => handleExecute(executing, result, environment, notes, evidence)}
         />
       )}
 
@@ -742,6 +819,16 @@ const TestCases = () => {
           modules={modules}
           onRefresh={fetchModules}
           onClose={() => setShowModuleMgr(false)}
+        />
+      )}
+
+      {/* Modal editar ejecución */}
+      {editExec && (
+        <EditExecutionModal
+          execution={editExec}
+          table={editExec.table}
+          onClose={() => setEditExec(null)}
+          onSaved={() => { setEditExec(null); fetchCases() }}
         />
       )}
     </div>

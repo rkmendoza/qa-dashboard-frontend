@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import ExecutionModal from '../components/ExecutionModal'
+import EditExecutionModal from '../components/EditExecutionModal'
 
 const STATUS_LABELS = { draft: 'Borrador', active: 'Activo', completed: 'Completado' }
 const STATUS_COLORS = {
@@ -173,6 +174,7 @@ const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
   const [loading, setLoading]   = useState(true)
   const [executing, setExecuting] = useState(null)
   const [expandedTc, setExpanded] = useState(null)
+  const [editExec, setEditExec] = useState(null)
 
   const fetchData = async () => {
     const [{ data: casesData }, { data: execData }] = await Promise.all([
@@ -200,16 +202,21 @@ const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
   const historyForTc = (tcId) =>
     executions.filter(e => e.test_case_id === tcId)
 
-  const handleExecute = async (tc, result, environment, notes) => {
+  const handleExecute = async (tc, result, environment, notes, evidence) => {
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('plan_executions').insert([{
+    const { error } = await supabase.from('plan_executions').insert([{
       test_plan_id: plan.id,
       test_case_id: tc.id,
       result,
       environment,
       notes,
+      evidence: evidence || [],
       executed_by: user.id
     }])
+    if (error) {
+      alert('Error al guardar ejecución: ' + error.message)
+      return
+    }
     setExecuting(null)
     fetchData()
     onUpdated && onUpdated()
@@ -308,18 +315,37 @@ const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
                       <div className="space-y-1.5">
                         {history.map((ex, i) => (
                           <div key={ex.id}
-                            className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 border border-gray-100">
-                            <ResultIcon result={ex.result} />
-                            <EnvBadge env={ex.environment} />
-                            <span className="text-gray-500 flex-1">
-                              {ex.result === 'passed' ? 'Pasó' : ex.result === 'failed' ? 'Falló' : 'Bloqueado'}
-                              {ex.notes && ` — ${ex.notes}`}
-                            </span>
-                            <span className="text-gray-300">{formatDate(ex.executed_at)}</span>
-                            {i === 0 && (
-                              <span className="bg-blue-50 text-blue-600 text-xs px-1.5 py-0.5 rounded border border-blue-100">
-                                último
+                            className="text-xs bg-white rounded-lg px-3 py-2 border border-gray-100">
+                            <div className="flex items-center gap-3">
+                              <ResultIcon result={ex.result} />
+                              <EnvBadge env={ex.environment} />
+                              <span className="text-gray-500 flex-1">
+                                {ex.result === 'passed' ? 'Pasó' : ex.result === 'failed' ? 'Falló' : 'Bloqueado'}
+                                {ex.notes && ` — ${ex.notes}`}
                               </span>
+                              <span className="text-gray-300">{formatDate(ex.executed_at)}</span>
+                              <button onClick={() => setEditExec({ ...ex, table: 'plan_executions' })}
+                                className="text-gray-500 hover:text-blue-600 transition ml-0.5">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                </svg>
+                              </button>
+                              {i === 0 && (
+                                <span className="bg-blue-50 text-blue-600 text-xs px-1.5 py-0.5 rounded border border-blue-100">
+                                  último
+                                </span>
+                              )}
+                            </div>
+                            {ex.evidence?.length > 0 && (
+                              <div className="flex gap-1 mt-1.5 ml-7">
+                                {ex.evidence.map((path, j) => (
+                                  <a key={j} href={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/execution-evidence/${path}`} target="_blank" rel="noreferrer">
+                                    <img src={`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/execution-evidence/${path}`}
+                                      className="w-10 h-10 rounded border border-gray-200 object-cover hover:opacity-80 transition" />
+                                  </a>
+                                ))}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -339,7 +365,17 @@ const PlanDetailModal = ({ plan, onClose, onUpdated }) => {
           tc={executing}
           contextLabel={`Ejecución de ${executing.title}`}
           onClose={() => setExecuting(null)}
-          onExecute={(result, environment, notes) => handleExecute(executing, result, environment, notes)}
+          onExecute={(result, environment, notes, evidence) => handleExecute(executing, result, environment, notes, evidence)}
+        />
+      )}
+
+      {/* Modal editar ejecución */}
+      {editExec && (
+        <EditExecutionModal
+          execution={editExec}
+          table={editExec.table}
+          onClose={() => setEditExec(null)}
+          onSaved={() => { setEditExec(null); fetchData() }}
         />
       )}
     </div>
@@ -357,6 +393,10 @@ const TestPlans = () => {
   const [viewing, setViewing]       = useState(null)
   const [filterStatus, setFilter]   = useState('todos')
   const [modules, setModules]       = useState([])
+  const [page, setPage]             = useState(0)
+  const [sortField, setSortField]   = useState('name')
+  const [sortDir, setSortDir]       = useState('asc')
+  const PAGE_SIZE = 20
 
   const fetchAll = async () => {
     const [{ data: plansData }, { data: casesData }, { data: execData }, { data: modData }] = await Promise.all([
@@ -434,7 +474,41 @@ const TestPlans = () => {
     fetchAll()
   }
 
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+    setPage(0)
+  }
+
   const filtered = plans.filter(p => filterStatus === 'todos' || p.status === filterStatus)
+    .sort((a, b) => {
+      let av, bv
+      if (sortField === 'name') { av = (a.name || '').toLowerCase(); bv = (b.name || '').toLowerCase() }
+      else if (sortField === 'module') { av = a.module || ''; bv = b.module || '' }
+      else if (sortField === 'status') { av = a.status || ''; bv = b.status || '' }
+      else if (sortField === 'tcs') { av = (a.test_plan_cases?.length || 0); bv = (b.test_plan_cases?.length || 0) }
+      else { av = a.created_at || ''; bv = b.created_at || '' }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return null
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        className={`transition-transform ${sortDir === 'desc' ? 'rotate-180' : ''}`}>
+        <path d="M12 5v14M5 12l7 7 7-7" />
+      </svg>
+    )
+  }
 
   const globalStats = {
     total:     plans.length,
@@ -475,7 +549,7 @@ const TestPlans = () => {
       {/* Filtros */}
       <div className="flex gap-2">
         {['todos', 'active', 'draft', 'completed'].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
+          <button key={s} onClick={() => { setFilter(s); setPage(0) }}
             className={`text-xs px-3 py-1.5 rounded-lg border transition ${
               filterStatus === s
                 ? 'bg-blue-600 text-white border-blue-600'
@@ -500,16 +574,27 @@ const TestPlans = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Plan</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Módulo</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Estado</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">TCs</th>
+                {[
+                  { key: 'name', label: 'Plan' },
+                  { key: 'module', label: 'Módulo' },
+                  { key: 'status', label: 'Estado' },
+                  { key: 'tcs', label: 'TCs' },
+                ].map(({ key, label }) => (
+                  <th key={key}
+                    onClick={() => handleSort(key)}
+                    className="text-left px-4 py-3 text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                    <span className="flex items-center gap-1">
+                      {label}
+                      <SortIcon field={key} />
+                    </span>
+                  </th>
+                ))}
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-36">Progreso</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((plan, i) => {
+              {paged.map((plan, i) => {
                 const s = planStats[plan.id] || { passed: 0, total: plan.test_plan_cases?.length || 0 }
                 return (
                   <tr key={plan.id}
@@ -544,6 +629,31 @@ const TestPlans = () => {
               })}
             </tbody>
           </table>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+              <p className="text-xs text-gray-400">{filtered.length} planes</p>
+              {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  ← Anterior
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => (
+                    <button key={i} onClick={() => setPage(i)}
+                      className={`text-xs w-7 h-7 rounded-lg transition ${i === page ? 'bg-blue-600 text-white' : 'text-gray-500 hover:bg-gray-100 border border-gray-200'}`}>
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

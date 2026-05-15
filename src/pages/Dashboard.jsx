@@ -1,9 +1,5 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell
-} from 'recharts'
 import axios from 'axios'
 import WorkItemModal from '../components/WorkItemModal'
 
@@ -18,9 +14,10 @@ const statusColors = {
   'Done': '#6b7280',
   'Completed': '#6b7280',
   'Rejected': '#f43f5e',
+  'Failed': '#ef4444',
+  'QA Validated': '#10b981',
 }
 
-const severityOrder = ['1 - Critical', '2 - High', '3 - Medium', '4 - Low']
 const severityColors = {
   '1 - Critical': '#ef4444',
   '2 - High': '#f59e0b',
@@ -42,19 +39,52 @@ const StatusBadge = ({ status }) => {
   )
 }
 
+const PAGE_SIZE = 20
+
+const FAKE_JIRA_ITEMS = [
+  { id: 'JIRA-101', title: 'Error al procesar pago con tarjeta de crédito en producción', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
+  { id: 'JIRA-102', title: 'La página de login no carga en Safari 17', severity: 'P2', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 12' },
+  { id: 'JIRA-103', title: 'El reporte de ventas no exporta a Excel correctamente', severity: 'P2', status: 'Ready for QA', assignee: 'Luis R.', sprint: 'Sprint 12' },
+  { id: 'JIRA-104', title: 'Notificación de correo duplicada al crear usuario', severity: 'P3', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 11' },
+  { id: 'JIRA-105', title: 'Campo de teléfono acepta caracteres no numéricos', severity: 'P3', status: 'QA Validated', assignee: 'María F.', sprint: 'Sprint 11' },
+  { id: 'JIRA-106', title: 'Error 500 al acceder a historial de órdenes con más de 100 items', severity: 'P1', status: 'Ready for QA', assignee: 'Ana G.', sprint: 'Sprint 12' },
+  { id: 'JIRA-107', title: 'El filtro por fecha en búsqueda de usuarios no funciona', severity: 'P2', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 11' },
+  { id: 'JIRA-108', title: 'Los acentos se muestran mal en los correos automáticos', severity: 'P4', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 12' },
+  { id: 'JIRA-109', title: 'La integración con Salesforce duplica contactos', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 11' },
+  { id: 'JIRA-110', title: 'Botón de "Cancelar suscripción" no redirige correctamente', severity: 'P3', status: 'QA Validated', assignee: 'Ana G.', sprint: 'Sprint 12' },
+  { id: 'JIRA-111', title: 'El modal de confirmación no aparece al eliminar un registro', severity: 'P3', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 11' },
+  { id: 'JIRA-112', title: 'La barra de progreso del onboarding se queda trabada en 80%', severity: 'P2', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 12' },
+  { id: 'JIRA-113', title: 'Error de validación en formulario de registro: campo email no obligatorio pero debería serlo', severity: 'P2', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
+  { id: 'JIRA-114', title: 'Las tablas del dashboard no cargan datos después de las 6 PM', severity: 'P3', status: 'QA Validated', assignee: 'Ana G.', sprint: 'Sprint 11' },
+  { id: 'JIRA-115', title: 'La foto de perfil no se actualiza hasta cerrar sesión', severity: 'P4', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 12' },
+  { id: 'JIRA-116', title: 'Timeout al generar PDF de factura con más de 50 páginas', severity: 'P2', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 11' },
+  { id: 'JIRA-117', title: 'Los permisos de rol "Supervisor" no se aplican correctamente', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
+  { id: 'JIRA-118', title: 'El buscador de productos no encuentra por código SKU', severity: 'P3', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 11' },
+  { id: 'JIRA-119', title: 'Los tooltips en gráficos del reporte trimestral se superponen', severity: 'P4', status: 'Ready for QA', assignee: 'Luis R.', sprint: 'Sprint 12' },
+  { id: 'JIRA-120', title: 'La API de webhook no responde con el formato esperado', severity: 'P2', status: 'QA Validated', assignee: 'María F.', sprint: 'Sprint 11' },
+  { id: 'JIRA-121', title: 'Las sesiones expiran antes de los 30 minutos configurados', severity: 'P2', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
+  { id: 'JIRA-122', title: 'El calendario de reservas no muestra bloques ocupados correctamente', severity: 'P3', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 11' },
+]
+
 const Dashboard = () => {
+  const [activeTab, setActiveTab] = useState('azure')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [filter, setFilter] = useState('todos')
+  const [statusFilter, setStatusFilter] = useState('todos')
+  const [sprintFilter, setSprintFilter] = useState('todos')
   const [search, setSearch] = useState('')
   const [lastSync, setLastSync] = useState(null)
   const [error, setError] = useState('')
   const [selectedItem, setSelectedItem] = useState(null)
+  const [sortField, setSortField] = useState('id')
+  const [sortDir, setSortDir] = useState('asc')
+  const [page, setPage] = useState(0)
+
+  const currentItems = activeTab === 'azure' ? items : FAKE_JIRA_ITEMS
 
   const fetchItems = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-
     const { data, error } = await supabase
       .from('bugs_cache')
       .select('*')
@@ -77,47 +107,75 @@ const Dashboard = () => {
     try {
       await axios.get(`${BACKEND}/api/azure/sync`)
       await fetchItems()
-    } catch (err) {
+    } catch {
       setError('Error al sincronizar con Azure DevOps')
     }
     setSyncing(false)
   }
 
   const handleItemUpdated = (id, newStatus) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, status: newStatus } : i))
+    const HIDDEN = ['Done', 'Completed', 'Rejected']
+    setItems(prev => HIDDEN.includes(newStatus)
+      ? prev.filter(i => i.id !== id)
+      : prev.map(i => i.id === id ? { ...i, status: newStatus } : i))
   }
 
-  const filtered = items.filter(item => {
-    const matchFilter = filter === 'todos' || item.severity === filter
-    const matchSearch = item.title.toLowerCase().includes(search.toLowerCase())
-      || item.assignee.toLowerCase().includes(search.toLowerCase())
-      || item.id.toLowerCase().includes(search.toLowerCase())
-    return matchFilter && matchSearch
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+    setPage(0)
+  }
+
+  const activeItems = currentItems.filter(i => i.status === 'Ready for QA')
+  const validatedItems = currentItems.filter(i => i.status === 'QA Validated')
+  const failedItems = currentItems.filter(i => i.status === 'Failed')
+
+  const statuses = [...new Set(currentItems.map(i => i.status))].filter(Boolean).sort()
+  const sprints = [...new Set(currentItems.map(i => i.sprint).filter(Boolean))].sort()
+
+  const filtered = currentItems.filter(item => {
+    const matchStatus = statusFilter === 'todos' || item.status === statusFilter
+    const matchSev = filter === 'todos' || item.severity === filter
+    const matchSprint = sprintFilter === 'todos' || item.sprint === sprintFilter
+    const matchSearch = (item.title || '').toLowerCase().includes(search.toLowerCase())
+      || (item.assignee || '').toLowerCase().includes(search.toLowerCase())
+      || (item.id || '').toLowerCase().includes(search.toLowerCase())
+    return matchStatus && matchSev && matchSprint && matchSearch
+  }).sort((a, b) => {
+    let av, bv
+    if (sortField === 'id') { av = a.id; bv = b.id }
+    else if (sortField === 'title') { av = a.title?.toLowerCase(); bv = b.title?.toLowerCase() }
+    else if (sortField === 'severity') { av = a.severity || ''; bv = b.severity || '' }
+    else if (sortField === 'sprint') { av = a.sprint || ''; bv = b.sprint || '' }
+    else if (sortField === 'assignee') { av = a.assignee || ''; bv = b.assignee || '' }
+    else if (sortField === 'status') { av = a.status || ''; bv = b.status || '' }
+    else { av = a.id; bv = b.id }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ? 1 : -1
+    return 0
   })
 
-  // Datos para el gráfico por severidad
-  const chartData = severityOrder.map(sev => ({
-    name: sev.split(' - ')[1] || sev,
-    total: items.filter(i => i.severity === sev).length,
-    fill: severityColors[sev]
-  })).filter(d => d.total > 0)
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  // Datos para el gráfico por assignee (top 5)
-  const assigneeData = Object.entries(
-    items.reduce((acc, item) => {
-      acc[item.assignee] = (acc[item.assignee] || 0) + 1
-      return acc
-    }, {})
-  )
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, total]) => ({ name: name.split(' ')[0], total }))
+  const SortIcon = ({ field }) => {
+    if (sortField !== field) return null
+    return (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        className={`transition-transform ${sortDir === 'desc' ? 'rotate-180' : ''}`}>
+        <path d="M12 5v14M5 12l7 7 7-7" />
+      </svg>
+    )
+  }
 
   const statCards = [
-    { label: 'Total Ready for QA', value: items.length, color: '#3b82f6' },
-    { label: 'Alta prioridad', value: items.filter(i => i.severity === '2 - High' || i.severity === '1 - Critical').length, color: '#ef4444' },
-    { label: 'Sin asignar', value: items.filter(i => i.assignee === 'Sin asignar').length, color: '#f59e0b' },
-    { label: 'Bloqueados', value: items.filter(i => i.status === 'Blocked').length, color: '#8b5cf6' },
+    { label: 'Ready for QA', value: activeItems.length, color: '#3b82f6' },
+    { label: 'QA Validated', value: validatedItems.length, color: '#10b981' },
+    { label: 'Failed', value: failedItems.length, color: '#ef4444' },
   ]
 
   if (loading) return (
@@ -126,26 +184,59 @@ const Dashboard = () => {
     </div>
   )
 
+  const isAzure = activeTab === 'azure'
+
   return (
     <div className="space-y-6">
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <button onClick={() => { setActiveTab('azure'); setPage(0); setSearch(''); setStatusFilter('todos'); setFilter('todos'); setSprintFilter('todos') }}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition ${isAzure ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Azure DevOps
+        </button>
+        <button onClick={() => { setActiveTab('jira'); setPage(0); setSearch(''); setStatusFilter('todos'); setFilter('todos'); setSprintFilter('todos') }}
+          className={`px-4 py-2 text-sm font-medium rounded-md transition ${!isAzure ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+          Jira
+        </button>
+      </div>
 
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-800">Ready for QA</h2>
-          {lastSync && (
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-gray-800">Ready for QA</h2>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isAzure ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
+              {isAzure ? 'Azure' : 'Jira'}
+            </span>
+          </div>
+          {lastSync && isAzure && (
             <p className="text-xs text-gray-400 mt-0.5">
               Última sync: {new Date(lastSync).toLocaleString('es-ES')}
             </p>
           )}
+          {!isAzure && (
+            <p className="text-xs text-gray-400 mt-0.5">
+              Datos de prueba — {FAKE_JIRA_ITEMS.length} items simulados
+            </p>
+          )}
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
-        >
-          {syncing ? 'Sincronizando...' : 'Sync Azure DevOps'}
-        </button>
+        {isAzure ? (
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
+          >
+            {syncing ? 'Sincronizando...' : 'Sync Azure DevOps'}
+          </button>
+        ) : (
+          <button
+            disabled
+            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium opacity-50 cursor-not-allowed transition"
+          >
+            Sync Jira (próximamente)
+          </button>
+        )}
       </div>
 
       {error && (
@@ -155,7 +246,7 @@ const Dashboard = () => {
       )}
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {statCards.map(({ label, value, color }) => (
           <div key={label} className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -164,58 +255,52 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Gráficos */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-4">Por severidad</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Bar dataKey="total" radius={[4, 4, 0, 0]}>
-                {chartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-sm font-medium text-gray-700 mb-4">Top asignados</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={assigneeData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis type="number" tick={{ fontSize: 12 }} />
-              <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={70} />
-              <Tooltip />
-              <Bar dataKey="total" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Filtros y búsqueda */}
+      {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           type="text"
           placeholder="Buscar por título, asignado o ID..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => { setSearch(e.target.value); setPage(0) }}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
+          value={statusFilter}
+          onChange={e => { setStatusFilter(e.target.value); setPage(0) }}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="todos">Todos los estados</option>
+          {statuses.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select
           value={filter}
-          onChange={e => setFilter(e.target.value)}
+          onChange={e => { setFilter(e.target.value); setPage(0) }}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="todos">Todas las severidades</option>
-          <option value="1 - Critical">Critical</option>
-          <option value="2 - High">High</option>
-          <option value="3 - Medium">Medium</option>
-          <option value="4 - Low">Low</option>
+          {isAzure ? (
+            <>
+              <option value="1 - Critical">Critical</option>
+              <option value="2 - High">High</option>
+              <option value="3 - Medium">Medium</option>
+              <option value="4 - Low">Low</option>
+            </>
+          ) : (
+            <>
+              <option value="P1">P1</option>
+              <option value="P2">P2</option>
+              <option value="P3">P3</option>
+              <option value="P4">P4</option>
+            </>
+          )}
+        </select>
+        <select
+          value={sprintFilter}
+          onChange={e => { setSprintFilter(e.target.value); setPage(0) }}
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="todos">Todos los sprints</option>
+          {sprints.map(s => <option key={s}>{s}</option>)}
         </select>
         <span className="text-xs text-gray-400">{filtered.length} items</span>
       </div>
@@ -225,23 +310,35 @@ const Dashboard = () => {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50">
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">ID</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Título</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Severidad</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Asignado</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Estado</th>
+              {[
+                { key: 'id', label: 'ID' },
+                { key: 'title', label: 'Título' },
+                { key: 'severity', label: 'Severidad' },
+                { key: 'sprint', label: 'Sprint' },
+                { key: 'assignee', label: 'Asignado' },
+                { key: 'status', label: 'Estado' },
+              ].map(({ key, label }) => (
+                <th key={key}
+                  onClick={() => handleSort(key)}
+                  className="text-left px-4 py-3 text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700 select-none">
+                  <span className="flex items-center gap-1">
+                    {label}
+                    <SortIcon field={key} />
+                  </span>
+                </th>
+              ))}
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {paged.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-10 text-gray-400">
+                <td colSpan={7} className="text-center py-10 text-gray-400">
                   No hay items que coincidan
                 </td>
               </tr>
             ) : (
-              filtered.map((item, i) => (
+              paged.map((item, i) => (
                 <tr key={item.id}
                   className={`border-b border-gray-50 hover:bg-gray-50 transition ${i % 2 === 0 ? '' : 'bg-gray-50/30'}`}>
                   <td className="px-4 py-3 font-mono text-xs text-gray-500 whitespace-nowrap">
@@ -255,6 +352,9 @@ const Dashboard = () => {
                       style={{ color: severityColors[item.severity] || '#6b7280' }}>
                       {item.severity}
                     </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                    {item.sprint || '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
                     {item.assignee}
@@ -276,7 +376,46 @@ const Dashboard = () => {
           </tbody>
         </table>
       </div>
-      {selectedItem && (
+
+      {/* Paginación */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400">{filtered.length} items</p>
+        {totalPages > 1 && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPage(p => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          >
+            ← Anterior
+          </button>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i)}
+                className={`text-xs w-7 h-7 rounded-lg transition ${
+                  i === page
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-500 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+            disabled={page >= totalPages - 1}
+            className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+          >
+            Siguiente →
+          </button>
+        </div>
+      )}
+      </div>
+
+      {selectedItem && isAzure && (
         <WorkItemModal
           item={selectedItem}
           onClose={() => setSelectedItem(null)}

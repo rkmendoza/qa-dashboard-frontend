@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { supabase } from '../supabaseClient'
 import ExecutionModal from './ExecutionModal'
@@ -20,13 +20,9 @@ const severityColors = {
 }
 
 const ESTADOS = [
+    'Failed',
     'Ready for QA',
-    'QA Validated',
-    'Committed',
-    'Blocked',
-    'Approved',
-    'Done',
-    'Rejected'
+    'QA Validated'
 ]
 
 const WorkItemModal = ({ item, onClose, onUpdated }) => {
@@ -49,6 +45,9 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
     const [selectedPlanCases, setSelectedPlanCases] = useState([])
     const [planDetailLoading, setPlanDetailLoading] = useState(false)
     const [executingTarget, setExecutingTarget] = useState(null)
+    const [commentFiles, setCommentFiles] = useState([])
+    const [commentPreviews, setCommentPreviews] = useState([])
+    const fileInputRef = useRef(null)
 
     const fetchAssociations = async () => {
         const { data } = await supabase
@@ -75,7 +74,6 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
             try {
                 const { data } = await axios.get(`${BACKEND}/api/azure/detail/${item.id}`)
                 setDetail(data)
-                setStatus(data.status)
             } catch {
                 setError('No se pudo cargar el detalle')
             }
@@ -112,26 +110,66 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
         setSaving(false)
     }
 
+    const handleFiles = (e) => {
+        const files = Array.from(e.target.files || [])
+        const valid = files.filter(f => f.size <= 5 * 1024 * 1024 && f.type.startsWith('image/'))
+        setCommentFiles(prev => [...prev, ...valid])
+        valid.forEach(f => {
+            const reader = new FileReader()
+            reader.onload = (ev) => setCommentPreviews(prev => [...prev, ev.target.result])
+            reader.readAsDataURL(f)
+        })
+    }
+
+    const removeCommentFile = (idx) => {
+        setCommentFiles(prev => prev.filter((_, i) => i !== idx))
+        setCommentPreviews(prev => prev.filter((_, i) => i !== idx))
+    }
+
+    const sanitizeFilename = (name) => {
+        const ext = name.split('.').pop()
+        const base = name.slice(0, -(ext.length + 1))
+        const sanitized = base.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)
+        return `${sanitized}.${ext}`
+    }
+
     const handleAddComment = async () => {
-        if (!comment.trim()) return
+        if (!comment.trim() && commentFiles.length === 0) return
         setCommenting(true)
         setError('')
         try {
-            const { data } = await axios.post(`${BACKEND}/api/azure/comment/${item.id}`, { text: comment })
+            let imgTags = ''
+            if (commentFiles.length > 0) {
+                const { data: { user } } = await supabase.auth.getUser()
+                for (const file of commentFiles) {
+                    const path = `${user.id}/${Date.now()}-${sanitizeFilename(file.name)}`
+                    const { data, error } = await supabase.storage
+                        .from('execution-evidence')
+                        .upload(path, file, { cacheControl: '3600', upsert: false })
+                    if (error) throw new Error(`Error al subir imagen: ${error.message}`)
+                    if (data) {
+                        imgTags += `<br><img src="${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/execution-evidence/${data.path}" alt="screenshot" style="max-width:600px">`
+                    }
+                }
+            }
+            const finalText = comment.trim() + imgTags
+            const { data } = await axios.post(`${BACKEND}/api/azure/comment/${item.id}`, { text: finalText })
             setDetail(prev => ({
                 ...prev,
                 comments: [...(prev.comments || []), {
                     id: data.id,
-                    text: comment,
+                    text: finalText,
                     author: 'Tú',
                     date: new Date().toISOString()
                 }]
             }))
             setComment('')
-            setSuccessMsg('Comentario agregado en Azure DevOps')
+            setCommentFiles([])
+            setCommentPreviews([])
+            setSuccessMsg('Comentario enviado con imágenes a Azure DevOps')
             setTimeout(() => setSuccessMsg(''), 3000)
-        } catch {
-            setError('Error al agregar el comentario')
+        } catch (err) {
+            setError(err.message || 'Error al agregar el comentario')
         }
         setCommenting(false)
     }
@@ -624,10 +662,28 @@ const WorkItemModal = ({ item, onClose, onUpdated }) => {
                                 rows={3}
                                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                             />
+                            <div className="mt-2">
+                                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                    {commentPreviews.map((src, i) => (
+                                        <div key={i} className="relative group">
+                                            <img src={src} className="w-14 h-14 rounded-lg border border-gray-200 object-cover" />
+                                            <button onClick={() => removeCommentFile(i)}
+                                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                                                ×
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <button onClick={() => fileInputRef.current?.click()}
+                                        className="w-14 h-14 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:border-blue-300 transition text-lg">
+                                        +
+                                    </button>
+                                </div>
+                            </div>
                             <button
                                 onClick={handleAddComment}
-                                disabled={commenting || !comment.trim()}
-                                className="mt-2 px-4 py-2 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-900 disabled:opacity-50 transition"
+                                disabled={commenting || (!comment.trim() && commentFiles.length === 0)}
+                                className="mt-1 px-4 py-2 bg-gray-800 text-white text-sm rounded-lg hover:bg-gray-900 disabled:opacity-50 transition"
                             >
                                 {commenting ? 'Enviando...' : 'Agregar comentario'}
                             </button>

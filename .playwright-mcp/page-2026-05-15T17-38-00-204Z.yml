@@ -1,0 +1,15 @@
+- generic [ref=e4]:
+  - heading "QA Dashboard" [level=1] [ref=e5]
+  - paragraph [ref=e6]: Inicia sesión para continuar
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: Email
+      - textbox "tu@email.com" [ref=e10]
+    - generic [ref=e11]:
+      - generic [ref=e12]: Contraseña
+      - textbox "••••••••" [ref=e13]
+    - button "Ingresar" [ref=e14] [cursor=pointer]
+    - paragraph [ref=e15]:
+      - text: ¿No tienes cuenta?
+      - link "Regístrate" [ref=e16] [cursor=pointer]:
+        - /url: /register

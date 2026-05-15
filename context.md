@@ -138,3 +138,6 @@ Todas las rutas protegidas usan `PrivateRoute` que verifica `user` en `AuthConte
 - El backend (`VITE_BACKEND_URL`) se asume corriendo en `localhost:3001`.
 - Los estilos del editor markdown (`MDEditor`) usan `data-color-mode="light"`.
 - El sidebar del Layout tiene labels mixtos español/inglés.
+- Item #10 (selector de ambiente) ya estaba implementado en ExecutionModal (sandbox/producción).
+- Item #4: Historial unifica `test_executions` + `plan_executions`, muestra badge de ambiente (🧪 Sandbox / 🚀 Prod), fuente (📋 Plan / 🧪 Suelta) y notas.
+- Item #8: Menciones `@Nombre` estilizadas con CSS (`a[data-vss-mention]` de ADO + fallback `.mention` para texto plano).

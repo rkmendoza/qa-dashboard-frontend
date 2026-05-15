@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../supabaseClient'
 
 const ResultIcon = ({ result }) => {
   if (result === 'passed') return <span className="text-green-500 text-sm">✅</span>
@@ -58,6 +59,9 @@ const ExecutionModal = ({ target, tc: tcProp, contextLabel, onClose, onExecute, 
   const [saving, setSaving] = useState(false)
   const [executingTC, setExecutingTC] = useState(isPlan ? targetTC : null)
   const [stepResults, setStepResults] = useState({})
+  const [evidence, setEvidence] = useState([])
+  const [evidencePreviews, setEvidencePreviews] = useState([])
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     if (isPlan && targetTC) {
@@ -84,12 +88,13 @@ const ExecutionModal = ({ target, tc: tcProp, contextLabel, onClose, onExecute, 
     if (!result) return
     setSaving(true)
     try {
+      const evidenceUrls = evidence.length > 0 ? await uploadEvidence() : []
       if (isPlan && executingTC) {
-        await onExecute(plan, executingTC, result, environment, notes)
+        await onExecute(plan, executingTC, result, environment, notes, evidenceUrls)
         setExecutingTC(null)
         onClose()
       } else {
-        await onExecute(result, environment, notes)
+        await onExecute(result, environment, notes, evidenceUrls)
         onClose()
       }
     } finally {
@@ -99,7 +104,49 @@ const ExecutionModal = ({ target, tc: tcProp, contextLabel, onClose, onExecute, 
       setStepResults({})
       setEnvironment('sandbox')
       setNotes('')
+      setEvidence([])
+      setEvidencePreviews([])
     }
+  }
+
+  const handleFiles = (e) => {
+    const files = Array.from(e.target.files || [])
+    const valid = files.filter(f => f.size <= 5 * 1024 * 1024 && f.type.startsWith('image/'))
+    setEvidence(prev => [...prev, ...valid])
+    valid.forEach(f => {
+      const reader = new FileReader()
+      reader.onload = (ev) => setEvidencePreviews(prev => [...prev, ev.target.result])
+      reader.readAsDataURL(f)
+    })
+  }
+
+  const removeEvidence = (idx) => {
+    setEvidence(prev => prev.filter((_, i) => i !== idx))
+    setEvidencePreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const sanitizeFilename = (name) => {
+    const ext = name.split('.').pop()
+    const base = name.slice(0, -(ext.length + 1))
+    const sanitized = base.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60)
+    return `${sanitized}.${ext}`
+  }
+
+  const uploadEvidence = async () => {
+    const urls = []
+    const { data: { user } } = await supabase.auth.getUser()
+    for (const file of evidence) {
+      const path = `${user.id}/${Date.now()}-${sanitizeFilename(file.name)}`
+      const { data, error } = await supabase.storage
+        .from('execution-evidence')
+        .upload(path, file, { cacheControl: '3600', upsert: false })
+      if (error) {
+        console.error('Upload error:', error)
+        throw new Error(`Error al subir imagen: ${error.message}`)
+      }
+      if (data) urls.push(data.path)
+    }
+    return urls
   }
 
   const handleCreateBug = () => {
@@ -286,6 +333,26 @@ const ExecutionModal = ({ target, tc: tcProp, contextLabel, onClose, onExecute, 
                 rows={3}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Ej: Falló en el paso 3, error 500..." />
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Evidencias</p>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+              <div className="flex flex-wrap gap-2 mb-2">
+                {evidencePreviews.map((src, i) => (
+                  <div key={i} className="relative group">
+                    <img src={src} className="w-16 h-16 rounded-lg border border-gray-200 object-cover" />
+                    <button onClick={() => removeEvidence(i)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:text-blue-500 hover:border-blue-300 transition text-xl">
+                  +
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2">

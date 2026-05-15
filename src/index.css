@@ -12,6 +12,14 @@
   text-decoration: underline;
 }
 
+.mention {
+  color: #3b82f6;
+  font-weight: 500;
+  background: #eff6ff;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .prose h1 { font-size: 1.75rem; font-weight: 600; margin-bottom: 1rem; color: #111; }
 .prose h2 { font-size: 1.35rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: #111; }
 .prose h3 { font-size: 1.1rem; font-weight: 600; margin: 1.25rem 0 0.5rem; color: #111; }
