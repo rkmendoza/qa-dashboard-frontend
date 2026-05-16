@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../supabaseClient'
 import axios from 'axios'
 import WorkItemModal from '../components/WorkItemModal'
+import JiraItemModal from '../components/JiraItemModal'
 
 const BACKEND = import.meta.env.VITE_BACKEND_URL
 
@@ -16,6 +17,11 @@ const statusColors = {
   'Rejected': '#f43f5e',
   'Failed': '#ef4444',
   'QA Validated': '#10b981',
+  'To Do': '#8b5cf6',
+  'In Progress': '#f59e0b',
+  'Validated': '#10b981',
+  'READY TO DEV': '#f59e0b',
+  'In QA': '#3b82f6',
 }
 
 const severityColors = {
@@ -41,36 +47,14 @@ const StatusBadge = ({ status }) => {
 
 const PAGE_SIZE = 20
 
-const FAKE_JIRA_ITEMS = [
-  { id: 'JIRA-101', title: 'Error al procesar pago con tarjeta de crédito en producción', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
-  { id: 'JIRA-102', title: 'La página de login no carga en Safari 17', severity: 'P2', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 12' },
-  { id: 'JIRA-103', title: 'El reporte de ventas no exporta a Excel correctamente', severity: 'P2', status: 'Ready for QA', assignee: 'Luis R.', sprint: 'Sprint 12' },
-  { id: 'JIRA-104', title: 'Notificación de correo duplicada al crear usuario', severity: 'P3', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 11' },
-  { id: 'JIRA-105', title: 'Campo de teléfono acepta caracteres no numéricos', severity: 'P3', status: 'QA Validated', assignee: 'María F.', sprint: 'Sprint 11' },
-  { id: 'JIRA-106', title: 'Error 500 al acceder a historial de órdenes con más de 100 items', severity: 'P1', status: 'Ready for QA', assignee: 'Ana G.', sprint: 'Sprint 12' },
-  { id: 'JIRA-107', title: 'El filtro por fecha en búsqueda de usuarios no funciona', severity: 'P2', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 11' },
-  { id: 'JIRA-108', title: 'Los acentos se muestran mal en los correos automáticos', severity: 'P4', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 12' },
-  { id: 'JIRA-109', title: 'La integración con Salesforce duplica contactos', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 11' },
-  { id: 'JIRA-110', title: 'Botón de "Cancelar suscripción" no redirige correctamente', severity: 'P3', status: 'QA Validated', assignee: 'Ana G.', sprint: 'Sprint 12' },
-  { id: 'JIRA-111', title: 'El modal de confirmación no aparece al eliminar un registro', severity: 'P3', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 11' },
-  { id: 'JIRA-112', title: 'La barra de progreso del onboarding se queda trabada en 80%', severity: 'P2', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 12' },
-  { id: 'JIRA-113', title: 'Error de validación en formulario de registro: campo email no obligatorio pero debería serlo', severity: 'P2', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
-  { id: 'JIRA-114', title: 'Las tablas del dashboard no cargan datos después de las 6 PM', severity: 'P3', status: 'QA Validated', assignee: 'Ana G.', sprint: 'Sprint 11' },
-  { id: 'JIRA-115', title: 'La foto de perfil no se actualiza hasta cerrar sesión', severity: 'P4', status: 'Failed', assignee: 'Luis R.', sprint: 'Sprint 12' },
-  { id: 'JIRA-116', title: 'Timeout al generar PDF de factura con más de 50 páginas', severity: 'P2', status: 'Ready for QA', assignee: 'María F.', sprint: 'Sprint 11' },
-  { id: 'JIRA-117', title: 'Los permisos de rol "Supervisor" no se aplican correctamente', severity: 'P1', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
-  { id: 'JIRA-118', title: 'El buscador de productos no encuentra por código SKU', severity: 'P3', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 11' },
-  { id: 'JIRA-119', title: 'Los tooltips en gráficos del reporte trimestral se superponen', severity: 'P4', status: 'Ready for QA', assignee: 'Luis R.', sprint: 'Sprint 12' },
-  { id: 'JIRA-120', title: 'La API de webhook no responde con el formato esperado', severity: 'P2', status: 'QA Validated', assignee: 'María F.', sprint: 'Sprint 11' },
-  { id: 'JIRA-121', title: 'Las sesiones expiran antes de los 30 minutos configurados', severity: 'P2', status: 'Ready for QA', assignee: 'Carlos M.', sprint: 'Sprint 12' },
-  { id: 'JIRA-122', title: 'El calendario de reservas no muestra bloques ocupados correctamente', severity: 'P3', status: 'Failed', assignee: 'Ana G.', sprint: 'Sprint 11' },
-]
-
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('azure')
   const [items, setItems] = useState([])
+  const [jiraItems, setJiraItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [syncingJira, setSyncingJira] = useState(false)
+  const [showDone, setShowDone] = useState(false)
   const [filter, setFilter] = useState('todos')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [sprintFilter, setSprintFilter] = useState('todos')
@@ -82,7 +66,8 @@ const Dashboard = () => {
   const [sortDir, setSortDir] = useState('asc')
   const [page, setPage] = useState(0)
 
-  const currentItems = activeTab === 'azure' ? items : FAKE_JIRA_ITEMS
+  const currentItems = activeTab === 'azure' ? items : jiraItems
+  const isAzure = activeTab === 'azure'
 
   const fetchItems = async () => {
     const { data, error } = await supabase
@@ -99,7 +84,19 @@ const Dashboard = () => {
     setLoading(false)
   }
 
-  useEffect(() => { fetchItems() }, [])
+  const fetchJiraItems = async () => {
+    const { data, error } = await supabase
+      .from('jira_cache')
+      .select('*')
+      .order('synced_at', { ascending: false })
+    if (error) {
+      console.error('Error fetch jira:', error)
+    } else {
+      setJiraItems(data || [])
+    }
+  }
+
+  useEffect(() => { fetchItems(); fetchJiraItems() }, [])
 
   const handleSync = async () => {
     setSyncing(true)
@@ -113,9 +110,27 @@ const Dashboard = () => {
     setSyncing(false)
   }
 
+  const handleJiraSync = async () => {
+    setSyncingJira(true)
+    setError('')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      await axios.get(`${BACKEND}/api/jira/sync`, {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      })
+      await fetchJiraItems()
+    } catch {
+      setError('Error al sincronizar con Jira')
+    }
+    setSyncingJira(false)
+  }
+
   const handleItemUpdated = (id, newStatus) => {
-    const HIDDEN = ['Done', 'Completed', 'Rejected']
+    const HIDDEN = ['Completed', 'Rejected']
     setItems(prev => HIDDEN.includes(newStatus)
+      ? prev.filter(i => i.id !== id)
+      : prev.map(i => i.id === id ? { ...i, status: newStatus } : i))
+    setJiraItems(prev => HIDDEN.includes(newStatus)
       ? prev.filter(i => i.id !== id)
       : prev.map(i => i.id === id ? { ...i, status: newStatus } : i))
   }
@@ -130,14 +145,16 @@ const Dashboard = () => {
     setPage(0)
   }
 
-  const activeItems = currentItems.filter(i => i.status === 'Ready for QA')
-  const validatedItems = currentItems.filter(i => i.status === 'QA Validated')
+  const activeItems = currentItems.filter(i => i.status === (isAzure ? 'Ready for QA' : 'In QA') || i.status === 'Ready for QA')
+  const validatedItems = currentItems.filter(i => i.status === (isAzure ? 'QA Validated' : 'Validated'))
   const failedItems = currentItems.filter(i => i.status === 'Failed')
 
-  const statuses = [...new Set(currentItems.map(i => i.status))].filter(Boolean).sort()
-  const sprints = [...new Set(currentItems.map(i => i.sprint).filter(Boolean))].sort()
+  const tableItems = showDone ? currentItems : currentItems.filter(i => i.status !== 'Done')
 
-  const filtered = currentItems.filter(item => {
+  const statuses = [...new Set(tableItems.map(i => i.status))].filter(Boolean).sort()
+  const sprints = [...new Set(tableItems.map(i => i.sprint).filter(Boolean))].sort()
+
+  const filtered = tableItems.filter(item => {
     const matchStatus = statusFilter === 'todos' || item.status === statusFilter
     const matchSev = filter === 'todos' || item.severity === filter
     const matchSprint = sprintFilter === 'todos' || item.sprint === sprintFilter
@@ -173,8 +190,8 @@ const Dashboard = () => {
   }
 
   const statCards = [
-    { label: 'Ready for QA', value: activeItems.length, color: '#3b82f6' },
-    { label: 'QA Validated', value: validatedItems.length, color: '#10b981' },
+    { label: isAzure ? 'Ready for QA' : 'In QA / Ready for QA', value: activeItems.length, color: '#3b82f6' },
+    { label: isAzure ? 'QA Validated' : 'Validated', value: validatedItems.length, color: '#10b981' },
     { label: 'Failed', value: failedItems.length, color: '#ef4444' },
   ]
 
@@ -183,8 +200,6 @@ const Dashboard = () => {
       Cargando...
     </div>
   )
-
-  const isAzure = activeTab === 'azure'
 
   return (
     <div className="space-y-6">
@@ -205,7 +220,7 @@ const Dashboard = () => {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold text-gray-800">Ready for QA</h2>
+            <h2 className="text-xl font-semibold text-gray-800">{isAzure ? 'Ready for QA' : 'In QA / Ready for QA'}</h2>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isAzure ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>
               {isAzure ? 'Azure' : 'Jira'}
             </span>
@@ -217,7 +232,7 @@ const Dashboard = () => {
           )}
           {!isAzure && (
             <p className="text-xs text-gray-400 mt-0.5">
-              Datos de prueba — {FAKE_JIRA_ITEMS.length} items simulados
+              {currentItems.length} items sincronizados desde Jira
             </p>
           )}
         </div>
@@ -231,10 +246,11 @@ const Dashboard = () => {
           </button>
         ) : (
           <button
-            disabled
-            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium opacity-50 cursor-not-allowed transition"
+            onClick={handleJiraSync}
+            disabled={syncingJira}
+            className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
           >
-            Sync Jira (próximamente)
+            {syncingJira ? 'Sincronizando...' : 'Sync Jira'}
           </button>
         )}
       </div>
@@ -302,6 +318,11 @@ const Dashboard = () => {
           <option value="todos">Todos los sprints</option>
           {sprints.map(s => <option key={s}>{s}</option>)}
         </select>
+          <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+            <input type="checkbox" checked={showDone} onChange={e => { setShowDone(e.target.checked); setPage(0) }}
+              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
+            Mostrar Done
+          </label>
         <span className="text-xs text-gray-400">{filtered.length} items</span>
       </div>
 
@@ -314,7 +335,7 @@ const Dashboard = () => {
                 { key: 'id', label: 'ID' },
                 { key: 'title', label: 'Título' },
                 { key: 'severity', label: 'Severidad' },
-                { key: 'sprint', label: 'Sprint' },
+                { key: 'sprint', label: isAzure ? 'Sprint' : 'Tipo' },
                 { key: 'assignee', label: 'Asignado' },
                 { key: 'status', label: 'Estado' },
               ].map(({ key, label }) => (
@@ -354,7 +375,7 @@ const Dashboard = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
-                    {item.sprint || '—'}
+                    {isAzure ? (item.sprint || '—') : (item.issue_type || '—')}
                   </td>
                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs">
                     {item.assignee}
@@ -417,6 +438,13 @@ const Dashboard = () => {
 
       {selectedItem && isAzure && (
         <WorkItemModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onUpdated={handleItemUpdated}
+        />
+      )}
+      {selectedItem && !isAzure && (
+        <JiraItemModal
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
           onUpdated={handleItemUpdated}

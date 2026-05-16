@@ -66,3 +66,28 @@ DO $$ BEGIN
     CREATE POLICY "evidencia_insert" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'execution-evidence' AND auth.role() = 'authenticated');
   END IF;
 END $$;
+
+-- Tabla separada para cache de Jira
+CREATE TABLE IF NOT EXISTS jira_cache (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT '',
+  severity TEXT NOT NULL DEFAULT 'Medium',
+  assignee TEXT NOT NULL DEFAULT 'Sin asignar',
+  url TEXT NOT NULL DEFAULT '',
+  issue_type TEXT NOT NULL DEFAULT 'Bug',
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE jira_cache ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'jira_cache_select' AND tablename = 'jira_cache') THEN
+    CREATE POLICY "jira_cache_select" ON jira_cache FOR SELECT USING (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'jira_cache_insert' AND tablename = 'jira_cache') THEN
+    CREATE POLICY "jira_cache_insert" ON jira_cache FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'jira_cache_update' AND tablename = 'jira_cache') THEN
+    CREATE POLICY "jira_cache_update" ON jira_cache FOR UPDATE USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
