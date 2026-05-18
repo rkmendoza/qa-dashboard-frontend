@@ -67,3 +67,81 @@
 | `pages/TestCases.jsx` | Fix `notes` en SELECT, error handling execute |
 | `pages/TestPlans.jsx` | Error handling execute |
 | `supabase-migration.sql` | `jira_cache`, `notes`, `evidence`, bucket storage |
+
+---
+
+## Análisis de valor — Métricas y reportes QA
+
+### Qué es medible
+
+#### Bugs / Defectos
+| Métrica | Cómo se calcula |
+|---------|----------------|
+| **Volumen por estado** | To Do, In QA, Ready for QA, Validated, Done — ya tenemos los counts |
+| **Tasa de llegada** | Bugs creados por semana (comparando syncs) |
+| **Tasa de cierre** | Bugs que pasan a Validated/Done por semana |
+| **Edad del bug** | Días desde created (lo tiene Jira, no lo guardamos aún) |
+| **Distribución por severidad** | P1-P4 / Critical-Low — ya existe filtro |
+| **Distribución por asignado** | Quién tiene más bugs asignados — ya existe top 5 |
+| **Tipo de item** | Bug vs Task vs Story vs Epic — jira_cache lo tiene |
+| **Ciclo QA** | Tiempo desde que entra a In QA hasta que sale a Validated |
+
+#### Ejecución de Tests
+| Métrica | Cómo se calcula |
+|---------|----------------|
+| **Volumen de ejecución** | Tests ejecutados por día (test_executions + plan_executions) |
+| **Tasa de paso** | % passed vs failed vs blocked — ya existe por TC individual |
+| **Ejecución por ambiente** | Sandbox vs Producción — ya se guarda |
+| **Ejecución por módulo** | Tests ejecutados agrupados por módulo del TC |
+| **TCs nunca ejecutados** | Diferencia entre total de TCs y TCs con al menos 1 ejecución |
+| **Planes completados** | Planes con 100% de TCs ejecutados |
+
+#### Calidad y Cobertura
+| Métrica | Cómo se calcula |
+|---------|----------------|
+| **Bugs sin cobertura** | Bugs sin asociación a ningún plan/TC |
+| **Planes por bug** | Promedio de planes que cubren cada bug |
+| **TCs con más fallos** | Ranking de TCs con más ejecuciones failed |
+| **Módulos más problemáticos** | Módulos con más bugs asociados o más TCs fallados |
+
+### Gráficos que podríamos mostrar
+
+#### Dashboard Principal (hoy)
+- Donut por severidad ✅
+- Top 5 asignados ✅
+- Cards: Ready for QA / In QA / Validated ✅
+
+#### Podríamos agregar
+| Gráfico | Tipo | Datos |
+|---------|------|-------|
+| **Funnel de estado** | Funnel | In QA → Ready for QA → Validated → Done |
+| **Tendencia semanal** | Línea | Bugs que entran vs salen de QA por semana |
+| **Tiempo en QA** | Barra | Días promedio que los bugs pasan en cada estado |
+| **Distribución por tipo** | Donut | Bug vs Task vs Story vs Epic (solo Jira) |
+| **Pasó/Falló/Bloqueado** | Donut | % global de resultados de ejecución |
+| **Ejecuciones por día** | Línea | Tests ejecutados por día en los últimos 30 días |
+| **Cobertura por módulo** | Barra | TCs totales vs ejecutados por módulo |
+| **Top TCs fallados** | Barra horizontal | TCs con mayor tasa de fallo |
+| **Progreso de planes** | Barra apilada | Planes activos con % completado |
+| **Scorecard de release** | Tarjetas | Pass rate, cobertura, bugs abiertos, ciclo QA promedio |
+
+### Valor real de la herramienta por rol
+
+**QA Manager**
+Vista unificada de carga de trabajo, cuellos de botella (bugs atascados), velocidad del equipo, módulos problemáticos, reportes sin Excel.
+
+**QA Engineer**
+Qué probar hoy, planes de prueba, evidencia de ejecución, trazabilidad bug ↔ test.
+
+**PM / Stakeholder**
+¿Estamos listos para release? Pass rate, bugs abiertos vs cerrados, tendencias.
+
+**Dev**
+Qué bugs están en QA, patrones de fallo, mejorar calidad basado en datos.
+
+### Impacto concreto
+1. **Trazabilidad completa**: cada bug sabe qué TCs lo cubren, quién ejecutó, cuándo, en qué ambiente, con qué resultado
+2. **Dos fuentes unificadas**: Jira + Azure en un mismo panel sin saltar entre sistemas
+3. **Eficiencia**: sin spreadsheets ni reports manuales
+4. **Estandarización**: proceso de QA consistente
+5. **Data-driven**: decisiones basadas en métricas, no en suposiciones

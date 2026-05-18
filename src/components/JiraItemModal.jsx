@@ -365,17 +365,16 @@ const JiraItemModal = ({ item, onClose, onUpdated }) => {
             {detail?.description && (
               <div className="p-5 border-b border-gray-100">
                 <p className="text-xs text-gray-400 mb-2">Descripción</p>
-                <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                  {typeof detail.description === 'string'
-                    ? detail.description
-                    : JSON.stringify(detail.description)}
-                </div>
+                <div
+                  className="text-sm text-gray-700 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: detail.description }}
+                />
               </div>
             )}
 
             {/* Transiciones de estado */}
             <div className="p-5 border-b border-gray-100">
-              <p className="text-xs text-gray-400 mb-2">Transicionar estado en Jira</p>
+              <p className="text-xs text-gray-400 mb-2">Cambiar estado en Jira</p>
               <div className="flex gap-2">
                 <select
                   value={transitionId}
@@ -394,7 +393,7 @@ const JiraItemModal = ({ item, onClose, onUpdated }) => {
                   disabled={saving || !transitionId}
                   className="px-4 py-2 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700 disabled:opacity-50 transition whitespace-nowrap"
                 >
-                  {saving ? 'Guardando...' : (selectedTransition ? `→ ${selectedTransition.to?.name || selectedTransition.name}` : 'Transicionar')}
+                  {saving ? 'Guardando...' : 'Actualizar'}
                 </button>
               </div>
             </div>
@@ -591,7 +590,7 @@ const JiraItemModal = ({ item, onClose, onUpdated }) => {
                           })}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-600 leading-relaxed">{c.text}</p>
+                      <p className="text-xs text-gray-600 leading-relaxed comment-text" dangerouslySetInnerHTML={{ __html: c.text }} />
                     </div>
                   ))}
                 </div>
